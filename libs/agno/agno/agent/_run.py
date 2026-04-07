@@ -148,7 +148,7 @@ def resolve_run_dependencies(agent: Agent, run_context: RunContext) -> None:
                     run_context.dependencies[key] = result
 
             except Exception as e:
-                log_warning(f"Failed to resolve dependencies for '{key}': {e}")
+                log_warning(f"Failed to resolve dependencies for '{key}': {str(e)}")
         else:
             run_context.dependencies[key] = value
 
@@ -182,7 +182,7 @@ async def aresolve_run_dependencies(agent: Agent, run_context: RunContext) -> No
 
             run_context.dependencies[key] = result
         except Exception as e:
-            log_warning(f"Failed to resolve context for '{key}': {e}")
+            log_warning(f"Failed to resolve context for '{key}': {str(e)}")
 
 
 # ---------------------------------------------------------------------------
@@ -671,7 +671,7 @@ def _run(
                     else:
                         delay = agent.delay_between_retries
 
-                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed: {str(e)}. Retrying in {delay}s...")
+                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed. Retrying in {delay}s...: {str(e)}")
                     time.sleep(delay)
                     continue
 
@@ -1176,7 +1176,7 @@ def _run_stream(
                     else:
                         delay = agent.delay_between_retries
 
-                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed: {str(e)}. Retrying in {delay}s...")
+                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed. Retrying in {delay}s...: {str(e)}")
                     time.sleep(delay)
                     continue
 
@@ -1767,7 +1767,7 @@ async def _arun(
                     else:
                         delay = agent.delay_between_retries
 
-                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed: {str(e)}. Retrying in {delay}s...")
+                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed. Retrying in {delay}s...: {str(e)}")
                     await asyncio.sleep(delay)
                     continue
 
@@ -1884,15 +1884,15 @@ async def _arun_background(
                 background_tasks=background_tasks,
                 **kwargs,
             )
-        except Exception:
-            log_error(f"Background run {run_response.run_id} failed", exc_info=True)
+        except Exception as e:
+            log_error(f"Background run {run_response.run_id} failed: {str(e)}")
             # Persist ERROR status
             try:
                 run_response.status = RunStatus.error
                 agent_session.upsert_run(run=run_response)
                 await asave_session(agent, session=agent_session)
-            except Exception:
-                log_error(f"Failed to persist error state for background run {run_response.run_id}", exc_info=True)
+            except Exception as e:
+                log_error(f"Failed to persist error state for background run {run_response.run_id}: {str(e)}")
             # Note: acleanup_run is already called by _arun's finally block
 
     task = asyncio.create_task(_background_task())
@@ -2533,7 +2533,7 @@ async def _arun_stream(
                     else:
                         delay = agent.delay_between_retries
 
-                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed: {str(e)}. Retrying in {delay}s...")
+                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed. Retrying in {delay}s...: {str(e)}")
                     await asyncio.sleep(delay)
                     continue
 
@@ -3232,7 +3232,7 @@ def _continue_run(
                     else:
                         delay = agent.delay_between_retries
 
-                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed: {str(e)}. Retrying in {delay}s...")
+                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed. Retrying in {delay}s...: {str(e)}")
                     time.sleep(delay)
                     continue
                 run_response.status = RunStatus.error
@@ -3518,7 +3518,7 @@ def _continue_run_stream(
                     else:
                         delay = agent.delay_between_retries
 
-                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed: {str(e)}. Retrying in {delay}s...")
+                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed. Retrying in {delay}s...: {str(e)}")
                     time.sleep(delay)
                     continue
                 run_response.status = RunStatus.error
@@ -4195,7 +4195,7 @@ async def _acontinue_run(
                     else:
                         delay = agent.delay_between_retries
 
-                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed: {str(e)}. Retrying in {delay}s...")
+                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed. Retrying in {delay}s...: {str(e)}")
                     await asyncio.sleep(delay)
                     continue
 
@@ -4682,7 +4682,7 @@ async def _acontinue_run_stream(
                     else:
                         delay = agent.delay_between_retries
 
-                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed: {str(e)}. Retrying in {delay}s...")
+                    log_warning(f"Attempt {attempt + 1}/{num_attempts} failed. Retrying in {delay}s...: {str(e)}")
                     await asyncio.sleep(delay)
                     continue
 
@@ -4766,7 +4766,7 @@ def save_run_response_to_file(
 
                 fn_path.write_text(json.dumps(run_response.content, indent=2))
         except Exception as e:
-            log_warning(f"Failed to save output to file: {e}")
+            log_warning(f"Failed to save output to file: {str(e)}")
 
 
 def scrub_run_output_for_storage(agent: Agent, run_response: RunOutput) -> None:
