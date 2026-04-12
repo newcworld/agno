@@ -1766,19 +1766,22 @@ async def _arun(
                     )
 
                 return run_response
-            except KeyboardInterrupt:
-                run_response = _handle_run_cancellation(run_response, KeyboardInterrupt(), run_messages)
-                try:
-                    if agent_session is not None:
-                        await acleanup_and_store(
+            except (KeyboardInterrupt, asyncio.CancelledError) as cancel_exc:
+                run_response = _handle_run_cancellation(run_response, cancel_exc, run_messages)
+                if agent_session is not None:
+                    _cleanup = asyncio.create_task(
+                        acleanup_and_store(
                             agent,
                             run_response=run_response,
                             session=agent_session,
                             run_context=run_context,
                             user_id=user_id,
                         )
-                except Exception as store_err:
-                    log_warning(f"Failed to persist cancelled run: {store_err}")
+                    )
+                    _background_tasks.add(_cleanup)
+                    _cleanup.add_done_callback(_background_tasks.discard)
+                if isinstance(cancel_exc, asyncio.CancelledError):
+                    raise
                 return run_response
             except Exception as e:
                 # Check if this is the last attempt
@@ -2391,26 +2394,28 @@ async def _arun_stream(
                 yield run_error
                 break
 
-            except KeyboardInterrupt:
-                run_response = _handle_run_cancellation(run_response, KeyboardInterrupt(), run_messages)
-                # Append cancelled event BEFORE storing so the DB copy includes it
-                cancelled_event = handle_event(
-                    create_run_cancelled_event(from_run_response=run_response, reason="Operation cancelled by user"),
-                    run_response,
-                    events_to_skip=agent.events_to_skip,  # type: ignore
-                    store_events=agent.store_events,
-                )
-                try:
-                    if agent_session is not None:
-                        await acleanup_and_store(
+            except (KeyboardInterrupt, asyncio.CancelledError) as cancel_exc:
+                run_response = _handle_run_cancellation(run_response, cancel_exc, run_messages)
+                if agent_session is not None:
+                    _cleanup = asyncio.create_task(
+                        acleanup_and_store(
                             agent,
                             run_response=run_response,
                             session=agent_session,
                             run_context=run_context,
                             user_id=user_id,
                         )
-                except Exception as store_err:
-                    log_warning(f"Failed to persist cancelled run: {store_err}")
+                    )
+                    _background_tasks.add(_cleanup)
+                    _cleanup.add_done_callback(_background_tasks.discard)
+                if isinstance(cancel_exc, asyncio.CancelledError):
+                    raise
+                cancelled_event = handle_event(
+                    create_run_cancelled_event(from_run_response=run_response, reason="Operation cancelled by user"),
+                    run_response,
+                    events_to_skip=agent.events_to_skip,  # type: ignore
+                    store_events=agent.store_events,
+                )
                 yield cancelled_event  # type: ignore
                 if yield_run_output:
                     yield run_response
@@ -3889,21 +3894,24 @@ async def _acontinue_run(
                     )
 
                 return run_response
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, asyncio.CancelledError) as cancel_exc:
                 if run_response is None:
                     run_response = RunOutput(run_id=run_id)
-                run_response = _handle_run_cancellation(run_response, KeyboardInterrupt(), run_messages)
-                try:
-                    if agent_session is not None:
-                        await acleanup_and_store(
+                run_response = _handle_run_cancellation(run_response, cancel_exc, run_messages)
+                if agent_session is not None:
+                    _cleanup = asyncio.create_task(
+                        acleanup_and_store(
                             agent,
                             run_response=run_response,
                             session=agent_session,
                             run_context=run_context,
                             user_id=user_id,
                         )
-                except Exception as store_err:
-                    log_warning(f"Failed to persist cancelled run: {store_err}")
+                    )
+                    _background_tasks.add(_cleanup)
+                    _cleanup.add_done_callback(_background_tasks.discard)
+                if isinstance(cancel_exc, asyncio.CancelledError):
+                    raise
                 return run_response
             except Exception as e:
                 run_response = cast(RunOutput, run_response)
@@ -4371,28 +4379,30 @@ async def _acontinue_run_stream(
                 # Yield the error event
                 yield run_error
                 break
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, asyncio.CancelledError) as cancel_exc:
                 if run_response is None:
                     run_response = RunOutput(run_id=run_id)
-                run_response = _handle_run_cancellation(run_response, KeyboardInterrupt(), run_messages)
-                # Append cancelled event BEFORE storing so the DB copy includes it
-                cancelled_event = handle_event(
-                    create_run_cancelled_event(from_run_response=run_response, reason="Operation cancelled by user"),
-                    run_response,
-                    events_to_skip=agent.events_to_skip,  # type: ignore
-                    store_events=agent.store_events,
-                )
-                try:
-                    if agent_session is not None:
-                        await acleanup_and_store(
+                run_response = _handle_run_cancellation(run_response, cancel_exc, run_messages)
+                if agent_session is not None:
+                    _cleanup = asyncio.create_task(
+                        acleanup_and_store(
                             agent,
                             run_response=run_response,
                             session=agent_session,
                             run_context=run_context,
                             user_id=user_id,
                         )
-                except Exception as store_err:
-                    log_warning(f"Failed to persist cancelled run: {store_err}")
+                    )
+                    _background_tasks.add(_cleanup)
+                    _cleanup.add_done_callback(_background_tasks.discard)
+                if isinstance(cancel_exc, asyncio.CancelledError):
+                    raise
+                cancelled_event = handle_event(
+                    create_run_cancelled_event(from_run_response=run_response, reason="Operation cancelled by user"),
+                    run_response,
+                    events_to_skip=agent.events_to_skip,  # type: ignore
+                    store_events=agent.store_events,
+                )
                 yield cancelled_event  # type: ignore
                 if yield_run_output:
                     yield run_response
@@ -4511,7 +4521,7 @@ def scrub_run_output_for_storage(agent: Agent, run_response: RunOutput) -> None:
 
 def _handle_run_cancellation(
     run_response: RunOutput,
-    error: Union[RunCancelledException, KeyboardInterrupt],
+    error: Union[RunCancelledException, KeyboardInterrupt, asyncio.CancelledError],
     run_messages: Optional["RunMessages"] = None,
 ) -> RunOutput:
     """Prepare a run response for cancellation: set status, preserve content and messages."""
