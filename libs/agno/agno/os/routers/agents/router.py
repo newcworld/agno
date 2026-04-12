@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any, AsyncGenerator, List, Optional, Union, cast
 from uuid import uuid4
@@ -162,6 +163,8 @@ async def agent_resumable_response_streamer(
             **kwargs,
         ):
             yield sse_data
+    except (asyncio.CancelledError, GeneratorExit):
+        return
     except (InputCheckError, OutputCheckError) as e:
         error_response = RunErrorEvent(
             content=str(e),
@@ -170,10 +173,10 @@ async def agent_resumable_response_streamer(
             additional_data=e.additional_data,
         )
         yield format_sse_event(error_response)
-    except BaseException as e:
+    except Exception as e:
         import traceback
 
-        traceback.print_exc()
+        traceback.print_exc(limit=3)
         error_response = RunErrorEvent(
             content=str(e),
             error_type=e.type if hasattr(e, "type") else None,
@@ -266,6 +269,8 @@ async def agent_resumable_continue_response_streamer(
             **extra_kwargs,
         ):
             yield sse_data
+    except (asyncio.CancelledError, GeneratorExit):
+        return
     except (InputCheckError, OutputCheckError) as e:
         error_response = RunErrorEvent(
             content=str(e),
@@ -274,10 +279,10 @@ async def agent_resumable_continue_response_streamer(
             additional_data=e.additional_data,
         )
         yield format_sse_event(error_response)
-    except BaseException as e:
+    except Exception as e:
         import traceback
 
-        traceback.print_exc()
+        traceback.print_exc(limit=3)
         error_response = RunErrorEvent(
             content=str(e),
             error_type=e.type if hasattr(e, "type") else None,

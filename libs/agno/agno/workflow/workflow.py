@@ -3806,7 +3806,7 @@ class Workflow:
         self.update_agents_and_teams_session_info()
 
         # Create queue for forwarding SSE strings to the caller
-        sse_queue: asyncio.Queue[Optional[str]] = asyncio.Queue(maxsize=512)
+        sse_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
 
         # Spawn detached background task
         async def _background_producer() -> None:
@@ -3913,12 +3913,15 @@ class Workflow:
         _workflow_background_tasks.add(task)
         task.add_done_callback(_workflow_background_tasks.discard)
 
-        # Yield SSE strings from the queue
-        while True:
-            sse_data = await sse_queue.get()
-            if sse_data is None:
-                break
-            yield sse_data
+        # Yield SSE strings from the queue (CancelledError is expected on client disconnect)
+        try:
+            while True:
+                sse_data = await sse_queue.get()
+                if sse_data is None:
+                    break
+                yield sse_data
+        except (asyncio.CancelledError, GeneratorExit):
+            log_debug(f"Client disconnected from background stream workflow run {run_id} (expected for resumable SSE)")
 
     async def aget_run(self, run_id: str, session_id: Optional[str] = None) -> Optional[WorkflowRunOutput]:
         """Get the status and details of a background workflow run - SIMPLIFIED"""

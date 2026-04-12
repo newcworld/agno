@@ -1975,7 +1975,7 @@ async def _arun_background_stream(
     log_info(f"Background stream run {run_id} persisted with RUNNING status")
 
     # 2. Create queue for forwarding SSE strings to the caller
-    sse_queue: asyncio.Queue[Optional[str]] = asyncio.Queue(maxsize=512)
+    sse_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
 
     # 3. Spawn detached background task
     async def _background_producer() -> None:
@@ -2056,12 +2056,15 @@ async def _arun_background_stream(
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
-    # 4. Yield SSE strings from the queue
-    while True:
-        sse_data = await sse_queue.get()
-        if sse_data is None:
-            break
-        yield sse_data
+    # 4. Yield SSE strings from the queue (CancelledError is expected on client disconnect)
+    try:
+        while True:
+            sse_data = await sse_queue.get()
+            if sse_data is None:
+                break
+            yield sse_data
+    except (asyncio.CancelledError, GeneratorExit):
+        log_debug(f"Client disconnected from background stream run {run_id} (expected for resumable SSE)")
 
 
 async def _arun_stream(
@@ -3802,7 +3805,7 @@ async def _acontinue_run_background_stream(
     log_info(f"Background continue-run stream {_run_id} persisted with RUNNING status")
 
     # 2. Create queue for forwarding SSE strings to the caller
-    sse_queue: asyncio.Queue[Optional[str]] = asyncio.Queue(maxsize=512)
+    sse_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
 
     # 3. Spawn detached background task
     async def _background_producer() -> None:
@@ -3885,12 +3888,15 @@ async def _acontinue_run_background_stream(
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
-    # 4. Yield SSE strings from the queue
-    while True:
-        sse_data = await sse_queue.get()
-        if sse_data is None:
-            break
-        yield sse_data
+    # 4. Yield SSE strings from the queue (CancelledError is expected on client disconnect)
+    try:
+        while True:
+            sse_data = await sse_queue.get()
+            if sse_data is None:
+                break
+            yield sse_data
+    except (asyncio.CancelledError, GeneratorExit):
+        log_debug(f"Client disconnected from background continue-run stream {_run_id} (expected for resumable SSE)")
 
 
 async def _acontinue_run(
