@@ -2028,8 +2028,8 @@ async def _arun_background_stream(
                 except Exception:
                     log_warning(f"Failed to publish SSE data to subscribers for run {run_id}")
 
-                # Periodically persist messages so chat_history is available mid-run
-                if run_response.messages and _time() - _last_save_ts >= _SAVE_INTERVAL:
+                # Periodically persist run state so chat_history is available mid-run
+                if _time() - _last_save_ts >= _SAVE_INTERVAL:
                     try:
                         agent_session.upsert_run(run=run_response)
                         await asave_session(agent, session=agent_session)
@@ -3871,7 +3871,7 @@ async def _acontinue_run_background_stream(
                 except Exception:
                     log_warning(f"Failed to publish SSE data to subscribers for continue-run {_run_id}")
 
-                if run_response and run_response.messages and _time() - _last_save_ts >= _SAVE_INTERVAL:
+                if run_response and _time() - _last_save_ts >= _SAVE_INTERVAL:
                     try:
                         agent_session.upsert_run(run=run_response)
                         await asave_session(agent, session=agent_session)

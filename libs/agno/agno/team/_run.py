@@ -3346,7 +3346,7 @@ async def _arun_background_stream(
                 except Exception:
                     log_warning(f"Failed to publish SSE data to subscribers for run {run_id}")
 
-                if run_response.messages and _time() - _last_save_ts >= _SAVE_INTERVAL:
+                if _time() - _last_save_ts >= _SAVE_INTERVAL:
                     try:
                         team_session.upsert_run(run_response=run_response)
                         await asave_session(team, session=team_session)

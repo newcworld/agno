@@ -302,12 +302,13 @@ class AgentSessionDetailSchema(BaseModel):
         created_at = datetime.fromtimestamp(session.created_at, tz=timezone.utc) if session.created_at else None
         updated_at = datetime.fromtimestamp(session.updated_at, tz=timezone.utc) if session.updated_at else created_at
 
-        _active_statuses = {RunStatus.running, RunStatus.pending}
+        _active_statuses = {RunStatus.running, RunStatus.pending, RunStatus.running.value, RunStatus.pending.value}
         active_runs: List[ActiveRunInfo] = []
         for run in session.runs or []:
             if hasattr(run, "status") and run.status in _active_statuses and run.run_id:
+                status_value = run.status.value if isinstance(run.status, RunStatus) else str(run.status)
                 active_runs.append(
-                    ActiveRunInfo(run_id=run.run_id, status=run.status.value, created_at=run.created_at)
+                    ActiveRunInfo(run_id=run.run_id, status=status_value, created_at=run.created_at)
                 )
 
         return cls(
@@ -354,12 +355,13 @@ class TeamSessionDetailSchema(BaseModel):
         created_at = datetime.fromtimestamp(session.created_at, tz=timezone.utc) if session.created_at else None
         updated_at = datetime.fromtimestamp(session.updated_at, tz=timezone.utc) if session.updated_at else created_at
 
-        _active_statuses = {RunStatus.running, RunStatus.pending}
+        _active_statuses = {RunStatus.running, RunStatus.pending, RunStatus.running.value, RunStatus.pending.value}
         active_runs: List[ActiveRunInfo] = []
         for run in session.runs or []:
             if hasattr(run, "status") and run.status in _active_statuses and run.run_id:
+                status_value = run.status.value if isinstance(run.status, RunStatus) else str(run.status)
                 active_runs.append(
-                    ActiveRunInfo(run_id=run.run_id, status=run.status.value, created_at=run.created_at)
+                    ActiveRunInfo(run_id=run.run_id, status=status_value, created_at=run.created_at)
                 )
 
         return cls(
