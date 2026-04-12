@@ -3298,8 +3298,13 @@ async def _arun_background_stream(
 
     # 3. Spawn detached background task
     async def _background_producer() -> None:
+        from time import time as _time
+
         from agno.os.managers import event_buffer, sse_subscriber_manager
         from agno.os.utils import format_sse_event_with_index
+
+        _last_save_ts: float = _time()
+        _SAVE_INTERVAL = 10.0
 
         try:
             async for event in _arun_stream(
@@ -3340,6 +3345,14 @@ async def _arun_background_stream(
                     )
                 except Exception:
                     log_warning(f"Failed to publish SSE data to subscribers for run {run_id}")
+
+                if run_response.messages and _time() - _last_save_ts >= _SAVE_INTERVAL:
+                    try:
+                        team_session.upsert_run(run_response=run_response)
+                        await asave_session(team, session=team_session)
+                        _last_save_ts = _time()
+                    except Exception:
+                        pass
 
         except asyncio.CancelledError:
             run_response.status = RunStatus.cancelled

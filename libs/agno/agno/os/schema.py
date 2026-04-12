@@ -17,6 +17,7 @@ from agno.os.config import (
     TracesConfig,
 )
 from agno.os.utils import extract_input_media, get_run_input, get_session_name, to_utc_datetime
+from agno.run.base import RunStatus
 from agno.session import AgentSession, TeamSession, WorkflowSession
 from agno.team.remote import RemoteTeam
 from agno.team.team import Team
@@ -272,6 +273,12 @@ class UpdateSessionRequest(BaseModel):
     summary: Optional[Dict[str, Any]] = Field(None, description="Session summary")
 
 
+class ActiveRunInfo(BaseModel):
+    run_id: str = Field(..., description="Run identifier")
+    status: str = Field(..., description="Current run status (RUNNING, PENDING, etc.)")
+    created_at: Optional[int] = Field(None, description="Run creation timestamp (epoch)")
+
+
 class AgentSessionDetailSchema(BaseModel):
     user_id: Optional[str] = Field(None, description="User ID associated with the session")
     agent_session_id: str = Field(..., description="Unique agent session identifier")
@@ -285,6 +292,7 @@ class AgentSessionDetailSchema(BaseModel):
     metrics: Optional[dict] = Field(None, description="Session metrics")
     metadata: Optional[dict] = Field(None, description="Additional metadata")
     chat_history: Optional[List[dict]] = Field(None, description="Complete chat history")
+    active_runs: Optional[List[ActiveRunInfo]] = Field(None, description="Runs with non-terminal status that can be resumed via /resume")
     created_at: Optional[datetime] = Field(None, description="Session creation timestamp")
     updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
 
@@ -293,6 +301,15 @@ class AgentSessionDetailSchema(BaseModel):
         session_name = get_session_name({**session.to_dict(), "session_type": "agent"})
         created_at = datetime.fromtimestamp(session.created_at, tz=timezone.utc) if session.created_at else None
         updated_at = datetime.fromtimestamp(session.updated_at, tz=timezone.utc) if session.updated_at else created_at
+
+        _active_statuses = {RunStatus.running, RunStatus.pending}
+        active_runs: List[ActiveRunInfo] = []
+        for run in session.runs or []:
+            if hasattr(run, "status") and run.status in _active_statuses and run.run_id:
+                active_runs.append(
+                    ActiveRunInfo(run_id=run.run_id, status=run.status.value, created_at=run.created_at)
+                )
+
         return cls(
             user_id=session.user_id,
             agent_session_id=session.session_id,
@@ -308,6 +325,7 @@ class AgentSessionDetailSchema(BaseModel):
             metrics=session.session_data.get("session_metrics", {}) if session.session_data else None,  # type: ignore
             metadata=session.metadata,
             chat_history=[message.to_dict() for message in session.get_chat_history()],
+            active_runs=active_runs if active_runs else None,
             created_at=to_utc_datetime(created_at),
             updated_at=to_utc_datetime(updated_at),
         )
@@ -324,6 +342,7 @@ class TeamSessionDetailSchema(BaseModel):
     team_data: Optional[dict] = Field(None, description="Team-specific data")
     metadata: Optional[dict] = Field(None, description="Additional metadata")
     chat_history: Optional[List[dict]] = Field(None, description="Complete chat history")
+    active_runs: Optional[List[ActiveRunInfo]] = Field(None, description="Runs with non-terminal status that can be resumed via /resume")
     created_at: Optional[datetime] = Field(None, description="Session creation timestamp")
     updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
     total_tokens: Optional[int] = Field(None, description="Total tokens used in this session")
@@ -334,6 +353,15 @@ class TeamSessionDetailSchema(BaseModel):
         session_name = get_session_name({**session_dict, "session_type": "team"})
         created_at = datetime.fromtimestamp(session.created_at, tz=timezone.utc) if session.created_at else None
         updated_at = datetime.fromtimestamp(session.updated_at, tz=timezone.utc) if session.updated_at else created_at
+
+        _active_statuses = {RunStatus.running, RunStatus.pending}
+        active_runs: List[ActiveRunInfo] = []
+        for run in session.runs or []:
+            if hasattr(run, "status") and run.status in _active_statuses and run.run_id:
+                active_runs.append(
+                    ActiveRunInfo(run_id=run.run_id, status=run.status.value, created_at=run.created_at)
+                )
+
         return cls(
             session_id=session.session_id,
             team_id=session.team_id,
@@ -348,6 +376,7 @@ class TeamSessionDetailSchema(BaseModel):
             metrics=session.session_data.get("session_metrics", {}) if session.session_data else None,
             metadata=session.metadata,
             chat_history=[message.to_dict() for message in session.get_chat_history()],
+            active_runs=active_runs if active_runs else None,
             created_at=to_utc_datetime(created_at),
             updated_at=to_utc_datetime(updated_at),
         )

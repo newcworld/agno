@@ -1979,8 +1979,13 @@ async def _arun_background_stream(
 
     # 3. Spawn detached background task
     async def _background_producer() -> None:
+        from time import time as _time
+
         from agno.os.managers import event_buffer, sse_subscriber_manager
         from agno.os.utils import format_sse_event_with_index
+
+        _last_save_ts: float = _time()
+        _SAVE_INTERVAL = 10.0  # save session at most every 10s during background run
 
         try:
             async for event in _arun_stream(
@@ -2022,6 +2027,15 @@ async def _arun_background_stream(
                     )
                 except Exception:
                     log_warning(f"Failed to publish SSE data to subscribers for run {run_id}")
+
+                # Periodically persist messages so chat_history is available mid-run
+                if run_response.messages and _time() - _last_save_ts >= _SAVE_INTERVAL:
+                    try:
+                        agent_session.upsert_run(run=run_response)
+                        await asave_session(agent, session=agent_session)
+                        _last_save_ts = _time()
+                    except Exception:
+                        pass
 
         except asyncio.CancelledError:
             run_response.status = RunStatus.cancelled
@@ -3809,8 +3823,13 @@ async def _acontinue_run_background_stream(
 
     # 3. Spawn detached background task
     async def _background_producer() -> None:
+        from time import time as _time
+
         from agno.os.managers import event_buffer, sse_subscriber_manager
         from agno.os.utils import format_sse_event_with_index
+
+        _last_save_ts: float = _time()
+        _SAVE_INTERVAL = 10.0
 
         try:
             async for event in _acontinue_run_stream(
@@ -3851,6 +3870,14 @@ async def _acontinue_run_background_stream(
                     )
                 except Exception:
                     log_warning(f"Failed to publish SSE data to subscribers for continue-run {_run_id}")
+
+                if run_response and run_response.messages and _time() - _last_save_ts >= _SAVE_INTERVAL:
+                    try:
+                        agent_session.upsert_run(run=run_response)
+                        await asave_session(agent, session=agent_session)
+                        _last_save_ts = _time()
+                    except Exception:
+                        pass
 
         except asyncio.CancelledError:
             if run_response:
