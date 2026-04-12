@@ -3294,7 +3294,7 @@ async def _arun_background_stream(
     log_info(f"Background stream run {run_id} persisted with RUNNING status")
 
     # 2. Create queue for forwarding SSE strings to the caller
-    sse_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+    sse_queue: asyncio.Queue[Optional[str]] = asyncio.Queue(maxsize=512)
 
     # 3. Spawn detached background task
     async def _background_producer() -> None:
@@ -3321,23 +3321,19 @@ async def _arun_background_stream(
                 if isinstance(event, TeamRunOutput):
                     continue
 
-                # Buffer event for reconnection support
                 event_index: Optional[int] = None
                 try:
-                    event_index = event_buffer.add_event(run_id, event)
+                    event_index = event_buffer.add_event(run_id, event, user_id=user_id)
                 except Exception:
                     log_warning(f"Failed to buffer event for run {run_id}")
 
-                # Format as SSE
                 sse_data = format_sse_event_with_index(event, event_index=event_index, run_id=run_id)
 
-                # Push to primary queue (original client)
                 try:
-                    await sse_queue.put(sse_data)
-                except Exception:
-                    log_warning(f"Failed to push SSE data to queue for run {run_id}")
+                    await asyncio.wait_for(sse_queue.put(sse_data), timeout=5.0)
+                except (asyncio.TimeoutError, Exception):
+                    pass
 
-                # Publish to SSE subscribers (resumed clients)
                 try:
                     await sse_subscriber_manager.publish(
                         run_id, event_index if event_index is not None else -1, sse_data
@@ -3345,9 +3341,12 @@ async def _arun_background_stream(
                 except Exception:
                     log_warning(f"Failed to publish SSE data to subscribers for run {run_id}")
 
+        except asyncio.CancelledError:
+            run_response.status = RunStatus.cancelled
+            raise
+
         except Exception:
             log_error(f"Background stream run {run_id} failed", exc_info=True)
-            # Persist ERROR status
             try:
                 run_response.status = RunStatus.error
                 team_session.upsert_run(run_response=run_response)
@@ -3356,19 +3355,16 @@ async def _arun_background_stream(
                 log_error(f"Failed to persist error state for background stream run {run_id}", exc_info=True)
 
         finally:
-            # Mark run completed in event buffer (status is set by _arun_stream/acleanup_and_store)
             try:
                 event_buffer.set_run_completed(run_id, run_response.status or RunStatus.completed)
             except Exception:
                 log_warning(f"Failed to mark run {run_id} as completed in event buffer")
 
-            # Signal SSE subscribers that run is done
             try:
-                await sse_subscriber_manager.complete(run_id)
-            except Exception:
+                await asyncio.shield(sse_subscriber_manager.complete(run_id))
+            except BaseException:
                 log_warning(f"Failed to signal SSE subscribers for run {run_id} completion")
 
-            # Signal primary queue that run is done
             try:
                 await sse_queue.put(None)
             except Exception:

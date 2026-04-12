@@ -147,20 +147,40 @@ async def agent_resumable_response_streamer(
     if auth_token and isinstance(agent, RemoteAgent):
         kwargs["auth_token"] = auth_token
 
-    async for sse_data in agent.arun(
-        input=message,
-        session_id=session_id,
-        user_id=user_id,
-        images=images,
-        audio=audio,
-        videos=videos,
-        files=files,
-        stream=True,
-        stream_events=stream_events,
-        background=True,
-        **kwargs,
-    ):
-        yield sse_data
+    try:
+        async for sse_data in agent.arun(
+            input=message,
+            session_id=session_id,
+            user_id=user_id,
+            images=images,
+            audio=audio,
+            videos=videos,
+            files=files,
+            stream=True,
+            stream_events=stream_events,
+            background=True,
+            **kwargs,
+        ):
+            yield sse_data
+    except (InputCheckError, OutputCheckError) as e:
+        error_response = RunErrorEvent(
+            content=str(e),
+            error_type=e.type,
+            error_id=e.error_id,
+            additional_data=e.additional_data,
+        )
+        yield format_sse_event(error_response)
+    except BaseException as e:
+        import traceback
+
+        traceback.print_exc()
+        error_response = RunErrorEvent(
+            content=str(e),
+            error_type=e.type if hasattr(e, "type") else None,
+            error_id=e.error_id if hasattr(e, "error_id") else None,
+        )
+        yield format_sse_event(error_response)
+        return
 
 
 async def agent_continue_response_streamer(
@@ -234,17 +254,37 @@ async def agent_resumable_continue_response_streamer(
     if background_tasks is not None:
         extra_kwargs["background_tasks"] = background_tasks
 
-    async for sse_data in agent.acontinue_run(
-        run_id=run_id,
-        updated_tools=updated_tools,
-        session_id=session_id,
-        user_id=user_id,
-        stream=True,
-        stream_events=True,
-        background=True,
-        **extra_kwargs,
-    ):
-        yield sse_data
+    try:
+        async for sse_data in agent.acontinue_run(
+            run_id=run_id,
+            updated_tools=updated_tools,
+            session_id=session_id,
+            user_id=user_id,
+            stream=True,
+            stream_events=True,
+            background=True,
+            **extra_kwargs,
+        ):
+            yield sse_data
+    except (InputCheckError, OutputCheckError) as e:
+        error_response = RunErrorEvent(
+            content=str(e),
+            error_type=e.type,
+            error_id=e.error_id,
+            additional_data=e.additional_data,
+        )
+        yield format_sse_event(error_response)
+    except BaseException as e:
+        import traceback
+
+        traceback.print_exc()
+        error_response = RunErrorEvent(
+            content=str(e),
+            error_type=e.type if hasattr(e, "type") else None,
+            error_id=e.error_id if hasattr(e, "error_id") else None,
+        )
+        yield format_sse_event(error_response)
+        return
 
 
 async def _resume_stream_generator(
@@ -252,6 +292,7 @@ async def _resume_stream_generator(
     run_id: str,
     last_event_index: Optional[int],
     session_id: Optional[str],
+    user_id: Optional[str] = None,
 ) -> AsyncGenerator:
     """SSE generator for the /resume endpoint.
 
@@ -260,6 +301,13 @@ async def _resume_stream_generator(
     2. Run completed (in buffer): replay all events since last_event_index
     3. Not in buffer: fall back to database replay
     """
+    # Verify run ownership when user_id is provided
+    buffered_user_id = event_buffer.get_run_user_id(run_id)
+    if user_id and buffered_user_id and buffered_user_id != user_id:
+        error = {"event": "error", "error": "Access denied: run belongs to a different user"}
+        yield f"event: error\ndata: {json.dumps(error)}\n\n"
+        return
+
     buffer_status = event_buffer.get_run_status(run_id)
 
     if buffer_status is None:
@@ -272,16 +320,18 @@ async def _resume_stream_generator(
                 yield f"event: error\ndata: {json.dumps(error)}\n\n"
                 return
             if run_output and run_output.events:
+                skip = (last_event_index + 1) if last_event_index is not None else 0
+                events_to_replay = run_output.events[skip:]
                 meta: dict = {
                     "event": "replay",
                     "run_id": run_id,
                     "status": run_output.status.value if run_output.status else "unknown",
-                    "total_events": len(run_output.events),
-                    "message": "Run completed. Replaying all events from database.",
+                    "total_events": len(events_to_replay),
+                    "message": f"Run completed. Replaying {len(events_to_replay)} events from database.",
                 }
                 yield f"event: replay\ndata: {json.dumps(meta)}\n\n"
 
-                for idx, event in enumerate(run_output.events):
+                for idx, event in enumerate(events_to_replay, start=skip):
                     event_dict = event.to_dict()
                     event_dict["event_index"] = idx
                     if "run_id" not in event_dict:
@@ -337,13 +387,17 @@ async def _resume_stream_generator(
         return
 
     # PATH 1: Run still active -- subscribe FIRST (to avoid race condition), then replay missed events
-    queue = sse_subscriber_manager.subscribe(run_id)
+    try:
+        queue = sse_subscriber_manager.subscribe(run_id)
+    except ValueError:
+        error = {"event": "error", "error": "Too many concurrent subscribers for this run"}
+        yield f"event: error\ndata: {json.dumps(error)}\n\n"
+        return
 
     try:
         missed_events = event_buffer.get_events(run_id, last_event_index)
         current_count = event_buffer.get_event_count(run_id)
 
-        # Track the highest replayed event_index for dedup against queue events
         last_replayed_index = last_event_index if last_event_index is not None else -1
 
         if missed_events:
@@ -368,13 +422,8 @@ async def _resume_stream_generator(
                 yield f"event: {event_type}\ndata: {json.dumps(event_dict, separators=(',', ':'), default=json_serializer, ensure_ascii=False)}\n\n"
                 last_replayed_index = current_idx
 
-        # Re-check buffer status after subscribing: the run may have completed
-        # between our initial status check and now. If so, replay remaining events
-        # from buffer instead of waiting on the queue (the sentinel was already pushed
-        # before our subscription existed).
         updated_status = event_buffer.get_run_status(run_id)
         if updated_status is not None and updated_status != RunStatus.running:
-            # Run completed while we were catching up -- replay remaining from buffer
             remaining = event_buffer.get_events(run_id, last_event_index=last_replayed_index)
             if remaining:
                 replay_start = last_replayed_index + 1
@@ -388,7 +437,6 @@ async def _resume_stream_generator(
                     yield f"event: {event_type}\ndata: {json.dumps(event_dict, separators=(',', ':'), default=json_serializer, ensure_ascii=False)}\n\n"
             return
 
-        # Confirm subscription for live events
         subscribed = {
             "event": "subscribed",
             "run_id": run_id,
@@ -400,14 +448,11 @@ async def _resume_stream_generator(
 
         log_debug(f"SSE client subscribed to agent run {run_id} (last_event_index: {last_event_index})")
 
-        # Read from queue, dedup events already replayed by event_index
         while True:
             item = await queue.get()
             if item is None:
-                # Sentinel: run completed
                 break
             ev_idx, sse_data = item
-            # Dedup: skip events already replayed during catch-up
             if ev_idx >= 0 and ev_idx <= last_replayed_index:
                 continue
             yield sse_data

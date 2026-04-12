@@ -3806,17 +3806,12 @@ class Workflow:
         self.update_agents_and_teams_session_info()
 
         # Create queue for forwarding SSE strings to the caller
-        sse_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+        sse_queue: asyncio.Queue[Optional[str]] = asyncio.Queue(maxsize=512)
 
         # Spawn detached background task
         async def _background_producer() -> None:
             from agno.os.managers import event_buffer, sse_subscriber_manager
             from agno.os.utils import format_sse_event_with_index
-
-            # _handle_event (called inside _aexecute_stream) already adds events to
-            # event_buffer.  We must NOT add them again here to avoid duplication.
-            # Instead, we read the current buffer count to derive the event_index
-            # that _handle_event just assigned.
 
             try:
                 if self.agent is not None:
@@ -3831,19 +3826,15 @@ class Workflow:
                         if isinstance(event, WfRunOutput):
                             continue
 
-                        # Get the event_index that _handle_event already assigned
                         event_index = event_buffer.get_event_count(run_id) - 1
 
-                        # Format as SSE
                         sse_data = format_sse_event_with_index(event, event_index=event_index, run_id=run_id)
 
-                        # Push to primary queue (original client)
                         try:
-                            await sse_queue.put(sse_data)
-                        except Exception:
-                            log_warning(f"Failed to push SSE data to queue for workflow run {run_id}")
+                            await asyncio.wait_for(sse_queue.put(sse_data), timeout=5.0)
+                        except (asyncio.TimeoutError, Exception):
+                            pass
 
-                        # Publish to SSE subscribers (resumed clients)
                         try:
                             await sse_subscriber_manager.publish(
                                 run_id, event_index if event_index is not None else -1, sse_data
@@ -3864,19 +3855,15 @@ class Workflow:
                         if isinstance(event, WfRunOutput):
                             continue
 
-                        # Get the event_index that _handle_event already assigned
                         event_index = event_buffer.get_event_count(run_id) - 1
 
-                        # Format as SSE
                         sse_data = format_sse_event_with_index(event, event_index=event_index, run_id=run_id)
 
-                        # Push to primary queue (original client)
                         try:
-                            await sse_queue.put(sse_data)
-                        except Exception:
-                            log_warning(f"Failed to push SSE data to queue for workflow run {run_id}")
+                            await asyncio.wait_for(sse_queue.put(sse_data), timeout=5.0)
+                        except (asyncio.TimeoutError, Exception):
+                            pass
 
-                        # Publish to SSE subscribers (resumed clients)
                         try:
                             await sse_subscriber_manager.publish(
                                 run_id, event_index if event_index is not None else -1, sse_data
@@ -3888,9 +3875,12 @@ class Workflow:
                     f"Background stream workflow run {run_id} completed with status: {workflow_run_response.status}"
                 )
 
+            except asyncio.CancelledError:
+                workflow_run_response.status = RunStatus.cancelled
+                raise
+
             except Exception:
                 log_error(f"Background stream workflow run {run_id} failed", exc_info=True)
-                # Persist ERROR status
                 try:
                     workflow_run_response.status = RunStatus.error
                     workflow_session.upsert_run(run=workflow_run_response)
@@ -3904,19 +3894,16 @@ class Workflow:
                     )
 
             finally:
-                # Mark run completed in event buffer
                 try:
                     event_buffer.set_run_completed(run_id, workflow_run_response.status or RunStatus.completed)
                 except Exception:
                     log_warning(f"Failed to mark workflow run {run_id} as completed in event buffer")
 
-                # Signal SSE subscribers that run is done
                 try:
-                    await sse_subscriber_manager.complete(run_id)
-                except Exception:
+                    await asyncio.shield(sse_subscriber_manager.complete(run_id))
+                except BaseException:
                     log_warning(f"Failed to signal SSE subscribers for workflow run {run_id} completion")
 
-                # Signal primary queue that run is done
                 try:
                     await sse_queue.put(None)
                 except Exception:
