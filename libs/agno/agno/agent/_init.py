@@ -217,6 +217,8 @@ def get_models(agent: Agent) -> None:
         agent.model = get_model(agent.model)
         if agent.model is not None:
             agent.model.model_type = ModelType.MODEL
+            if agent.tool_call_timeout is not None:
+                agent.model.tool_call_timeout = agent.tool_call_timeout
     if agent.reasoning_model is not None:
         agent.reasoning_model = get_model(agent.reasoning_model)
         if agent.reasoning_model is not None:

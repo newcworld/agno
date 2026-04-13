@@ -167,6 +167,11 @@ class Model(ABC):
     cache_ttl: Optional[int] = None
     cache_dir: Optional[str] = None
 
+    # Maximum time (in seconds) for a single tool call before it is terminated.
+    # When set, tool calls that exceed this duration will fail gracefully
+    # with an error message instead of hanging indefinitely.
+    tool_call_timeout: Optional[int] = None
+
     # Retry configuration for model provider errors
     # Number of retries to attempt when a ModelProviderError occurs
     retries: int = 0
@@ -2123,7 +2128,29 @@ class Model(ABC):
         function_execution_result: FunctionExecutionResult = FunctionExecutionResult(status="failure")
         stop_after_tool_call_from_exception = False
         try:
-            function_execution_result = function_call.execute()
+            if self.tool_call_timeout is not None:
+                import concurrent.futures
+
+                executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(function_call.execute)
+                try:
+                    function_execution_result = future.result(timeout=self.tool_call_timeout)
+                except concurrent.futures.TimeoutError:
+                    future.cancel()
+                    log_warning(
+                        f"Tool call {function_call.function.name} timed out after {self.tool_call_timeout}s"
+                    )
+                    function_call.error = (
+                        f"Tool call timed out after {self.tool_call_timeout} seconds. "
+                        "Try a different approach or skip this tool."
+                    )
+                    function_execution_result = FunctionExecutionResult(
+                        status="failure", error=function_call.error
+                    )
+                finally:
+                    executor.shutdown(wait=False)
+            else:
+                function_execution_result = function_call.execute()
         except AgentRunException as a_exc:
             # Update additional messages from function call
             _handle_agent_exception(a_exc, additional_input)
@@ -2442,18 +2469,30 @@ class Model(ABC):
                 or isasyncgenfunction(function_call.function.entrypoint)
                 or iscoroutine(function_call.function.entrypoint)
             ):
-                result = await function_call.aexecute()
-                success = result.status == "success"
-
-            # If any of the hooks are async, we need to run the function call asynchronously
+                coro = function_call.aexecute()
             elif function_call.function.tool_hooks is not None and any(
                 iscoroutinefunction(f) for f in function_call.function.tool_hooks
             ):
-                result = await function_call.aexecute()
-                success = result.status == "success"
+                coro = function_call.aexecute()
             else:
-                result = await asyncio.to_thread(function_call.execute)
-                success = result.status == "success"
+                coro = asyncio.to_thread(function_call.execute)
+
+            if self.tool_call_timeout is not None:
+                try:
+                    result = await asyncio.wait_for(coro, timeout=self.tool_call_timeout)
+                except asyncio.TimeoutError:
+                    log_warning(
+                        f"Tool call {function_call.function.name} timed out after {self.tool_call_timeout}s"
+                    )
+                    function_call.error = (
+                        f"Tool call timed out after {self.tool_call_timeout} seconds. "
+                        "Try a different approach or skip this tool."
+                    )
+                    result = FunctionExecutionResult(status="failure", error=function_call.error)
+            else:
+                result = await coro
+
+            success = result.status == "success"
         except AgentRunException as e:
             success = e
         except Exception as e:

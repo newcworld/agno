@@ -559,6 +559,8 @@ def to_dict(agent: Agent) -> Dict[str, Any]:
 
     if agent.tool_call_limit is not None:
         config["tool_call_limit"] = agent.tool_call_limit
+    if agent.tool_call_timeout is not None:
+        config["tool_call_timeout"] = agent.tool_call_timeout
     if agent.tool_choice is not None:
         config["tool_choice"] = agent.tool_choice
 
@@ -912,6 +914,7 @@ def from_dict(cls: Type[Agent], data: Dict[str, Any], registry: Optional[Registr
         # --- Tools ---
         tools=config.get("tools"),
         tool_call_limit=config.get("tool_call_limit"),
+        tool_call_timeout=config.get("tool_call_timeout"),
         tool_choice=config.get("tool_choice"),
         # --- Reasoning settings ---
         reasoning=config.get("reasoning", False),
