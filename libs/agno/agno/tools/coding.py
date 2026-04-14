@@ -54,6 +54,22 @@ class CodingTools(Toolkit):
         "uniq",
         "tr",
         "cut",
+        # Frontend / Node.js ecosystem
+        "node",
+        "npm",
+        "npx",
+        "pnpm",
+        "yarn",
+        "bun",
+        "bunx",
+        "tsc",
+        "eslint",
+        "prettier",
+        "vitest",
+        "jest",
+        "next",
+        "vite",
+        "turbo",
     ]
 
     # Per-tool instruction blocks — composed dynamically based on enabled tools.
@@ -751,3 +767,4 @@ class CodingTools(Toolkit):
         except Exception as e:
             log_error(f"Error listing directory: {str(e)}")
             return f"Error listing directory: {e}"
+

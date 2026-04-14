@@ -669,6 +669,13 @@ def test_default_allowed_commands():
         assert "pytest" in tools.allowed_commands
 
 
+def test_default_allowed_commands_include_frontend():
+    """Test that DEFAULT_ALLOWED_COMMANDS includes frontend tooling."""
+    cmds = CodingTools.DEFAULT_ALLOWED_COMMANDS
+    for cmd in ("node", "npm", "npx", "pnpm", "yarn", "bun", "bunx", "tsc", "eslint", "prettier", "vitest", "jest"):
+        assert cmd in cmds, f"{cmd} should be in DEFAULT_ALLOWED_COMMANDS"
+
+
 # --- instruction generation tests ---
 
 
