@@ -39,7 +39,6 @@ _mock_mid_module.MarkItDown = _mock_mid_class
 @pytest.fixture(autouse=True)
 def _patch_markitdown(monkeypatch):
     """Patch the markitdown import so the reader can be instantiated without installing markitdown."""
-    import importlib
     import sys
 
     # Inject a fake markitdown module
@@ -447,8 +446,6 @@ def test_build_markitdown_without_api_key(monkeypatch):
     monkeypatch.setattr(mod, "MarkItDown", mock_md_cls)
 
     # Call the real _build_markitdown (not the patched one)
-    from agno.knowledge.reader.markitdown_reader import _build_markitdown as real_build
-    # We need to reimport to get the un-patched version - just test the logic
     result = mod._build_markitdown()
 
     # Should be called without llm_client/llm_model when no API key

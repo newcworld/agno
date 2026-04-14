@@ -12,15 +12,13 @@ Covers:
 import asyncio
 import os
 import time
-from unittest.mock import MagicMock
-
 import pytest
 
 os.environ.setdefault("OPENAI_API_KEY", "test-key-for-testing")
 
 from agno.agent.agent import Agent
 from agno.models.openai.chat import OpenAIChat
-from agno.tools.function import Function, FunctionCall, FunctionExecutionResult
+from agno.tools.function import Function, FunctionCall
 
 
 # =============================================================================
@@ -106,7 +104,7 @@ class TestSyncToolCallTimeout:
         fc = _build_function_call(_make_slow_tool(10.0))
 
         start = time.time()
-        results = list(model.run_function_call(function_call=fc, function_call_results=[]))
+        list(model.run_function_call(function_call=fc, function_call_results=[]))
         elapsed = time.time() - start
 
         assert elapsed < 3.0, f"Should have timed out in ~1s but took {elapsed:.1f}s"
@@ -118,7 +116,7 @@ class TestSyncToolCallTimeout:
         model.tool_call_timeout = 10
         fc = _build_function_call(_make_fast_tool())
 
-        results = list(model.run_function_call(function_call=fc, function_call_results=[]))
+        list(model.run_function_call(function_call=fc, function_call_results=[]))
         assert fc.error is None
         assert fc.result == "fast result"
 
@@ -128,7 +126,7 @@ class TestSyncToolCallTimeout:
         fc = _build_function_call(_make_slow_tool(0.2))
 
         start = time.time()
-        results = list(model.run_function_call(function_call=fc, function_call_results=[]))
+        list(model.run_function_call(function_call=fc, function_call_results=[]))
         elapsed = time.time() - start
 
         assert fc.error is None
