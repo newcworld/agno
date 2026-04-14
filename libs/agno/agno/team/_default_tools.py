@@ -74,7 +74,7 @@ def _get_update_user_memory_function(team: "Team", user_id: Optional[str] = None
             str: A string indicating the status of the update.
         """
         team.memory_manager = cast(MemoryManager, team.memory_manager)
-        response = team.memory_manager.update_memory_task(task=task, user_id=user_id)
+        response = team.memory_manager.update_memory_task(task=task, user_id=user_id, team_id=team.id)
         return response
 
     async def aupdate_user_memory(task: str) -> str:
@@ -90,7 +90,7 @@ def _get_update_user_memory_function(team: "Team", user_id: Optional[str] = None
             str: A string indicating the status of the update.
         """
         team.memory_manager = cast(MemoryManager, team.memory_manager)
-        response = await team.memory_manager.aupdate_memory_task(task=task, user_id=user_id)
+        response = await team.memory_manager.aupdate_memory_task(task=task, user_id=user_id, team_id=team.id)
         return response
 
     if async_mode:

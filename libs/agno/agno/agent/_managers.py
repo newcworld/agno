@@ -46,6 +46,7 @@ def make_memories(
             message=user_message_str,
             user_id=user_id,
             agent_id=agent.id,
+            team_id=agent.team_id,
             run_metrics=collector,
         )
 
@@ -72,7 +73,11 @@ def make_memories(
         if len(non_empty_messages) > 0:
             if agent.memory_manager is not None and agent.update_memory_on_run:
                 agent.memory_manager.create_user_memories(
-                    messages=non_empty_messages, user_id=user_id, agent_id=agent.id, run_metrics=collector
+                    messages=non_empty_messages,
+                    user_id=user_id,
+                    agent_id=agent.id,
+                    team_id=agent.team_id,
+                    run_metrics=collector,
                 )  # type: ignore
             else:
                 log_warning(
@@ -101,6 +106,7 @@ async def amake_memories(
             message=user_message_str,
             user_id=user_id,
             agent_id=agent.id,
+            team_id=agent.team_id,
             run_metrics=collector,
         )
 
@@ -127,7 +133,11 @@ async def amake_memories(
         if len(non_empty_messages) > 0:
             if agent.memory_manager is not None and agent.update_memory_on_run:
                 await agent.memory_manager.acreate_user_memories(  # type: ignore
-                    messages=non_empty_messages, user_id=user_id, agent_id=agent.id, run_metrics=collector
+                    messages=non_empty_messages,
+                    user_id=user_id,
+                    agent_id=agent.id,
+                    team_id=agent.team_id,
+                    run_metrics=collector,
                 )
             else:
                 log_warning(

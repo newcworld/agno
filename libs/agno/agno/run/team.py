@@ -413,6 +413,8 @@ class ReasoningCompletedEvent(BaseTeamRunEvent):
 class ToolCallStartedEvent(BaseTeamRunEvent):
     event: str = TeamRunEvent.tool_call_started.value
     tool: Optional[ToolExecution] = None
+    agent_id: Optional[str] = None
+    agent_name: Optional[str] = None
 
 
 @dataclass
@@ -423,6 +425,8 @@ class ToolCallCompletedEvent(BaseTeamRunEvent):
     images: Optional[List[Image]] = None  # Images produced by the tool call
     videos: Optional[List[Video]] = None  # Videos produced by the tool call
     audio: Optional[List[Audio]] = None  # Audio produced by the tool call
+    agent_id: Optional[str] = None
+    agent_name: Optional[str] = None
 
 
 @dataclass
@@ -430,6 +434,8 @@ class ToolCallErrorEvent(BaseTeamRunEvent):
     event: str = TeamRunEvent.tool_call_error.value
     tool: Optional[ToolExecution] = None
     error: Optional[str] = None
+    agent_id: Optional[str] = None
+    agent_name: Optional[str] = None
 
 
 @dataclass

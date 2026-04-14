@@ -48,7 +48,9 @@ def get_update_user_memory_function(agent: Agent, user_id: Optional[str] = None,
             str: A string indicating the status of the task.
         """
         agent.memory_manager = cast(MemoryManager, agent.memory_manager)
-        response = agent.memory_manager.update_memory_task(task=task, user_id=user_id)
+        response = agent.memory_manager.update_memory_task(
+            task=task, user_id=user_id, agent_id=agent.id, team_id=agent.team_id
+        )
 
         return response
 
@@ -64,7 +66,9 @@ def get_update_user_memory_function(agent: Agent, user_id: Optional[str] = None,
             str: A string indicating the status of the task.
         """
         agent.memory_manager = cast(MemoryManager, agent.memory_manager)
-        response = await agent.memory_manager.aupdate_memory_task(task=task, user_id=user_id)
+        response = await agent.memory_manager.aupdate_memory_task(
+            task=task, user_id=user_id, agent_id=agent.id, team_id=agent.team_id
+        )
         return response
 
     if async_mode:

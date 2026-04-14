@@ -571,7 +571,10 @@ def create_tool_call_started_event(from_run_response: RunOutput, tool: ToolExecu
 
 
 def create_team_tool_call_started_event(
-    from_run_response: TeamRunOutput, tool: ToolExecution
+    from_run_response: TeamRunOutput,
+    tool: ToolExecution,
+    agent_id: Optional[str] = None,
+    agent_name: Optional[str] = None,
 ) -> TeamToolCallStartedEvent:
     return TeamToolCallStartedEvent(
         session_id=from_run_response.session_id,
@@ -579,6 +582,8 @@ def create_team_tool_call_started_event(
         team_name=from_run_response.team_name,  # type: ignore
         run_id=from_run_response.run_id,
         tool=tool,
+        agent_id=agent_id,
+        agent_name=agent_name,
     )
 
 
@@ -599,7 +604,11 @@ def create_tool_call_completed_event(
 
 
 def create_team_tool_call_completed_event(
-    from_run_response: TeamRunOutput, tool: ToolExecution, content: Optional[Any] = None
+    from_run_response: TeamRunOutput,
+    tool: ToolExecution,
+    content: Optional[Any] = None,
+    agent_id: Optional[str] = None,
+    agent_name: Optional[str] = None,
 ) -> TeamToolCallCompletedEvent:
     return TeamToolCallCompletedEvent(
         session_id=from_run_response.session_id,
@@ -611,6 +620,8 @@ def create_team_tool_call_completed_event(
         images=from_run_response.images,
         videos=from_run_response.videos,
         audio=from_run_response.audio,
+        agent_id=agent_id,
+        agent_name=agent_name,
     )
 
 
@@ -628,7 +639,11 @@ def create_tool_call_error_event(
 
 
 def create_team_tool_call_error_event(
-    from_run_response: TeamRunOutput, tool: ToolExecution, error: Optional[str] = None
+    from_run_response: TeamRunOutput,
+    tool: ToolExecution,
+    error: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    agent_name: Optional[str] = None,
 ) -> TeamToolCallErrorEvent:
     return TeamToolCallErrorEvent(
         session_id=from_run_response.session_id,
@@ -637,6 +652,8 @@ def create_team_tool_call_error_event(
         run_id=from_run_response.run_id,
         tool=tool,
         error=error,
+        agent_id=agent_id,
+        agent_name=agent_name,
     )
 
 

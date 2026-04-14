@@ -478,7 +478,13 @@ class MemoryManager:
 
         return response
 
-    def update_memory_task(self, task: str, user_id: Optional[str] = None) -> str:
+    def update_memory_task(
+        self,
+        task: str,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+    ) -> str:
         """Updates the memory with a task"""
 
         if not self.db:
@@ -505,6 +511,8 @@ class MemoryManager:
             existing_memories=existing_memories,
             user_id=user_id,
             db=self.db,
+            agent_id=agent_id,
+            team_id=team_id,
             delete_memories=self.delete_memories,
             update_memories=self.update_memories,
             add_memories=self.add_memories,
@@ -516,7 +524,13 @@ class MemoryManager:
 
         return response
 
-    async def aupdate_memory_task(self, task: str, user_id: Optional[str] = None) -> str:
+    async def aupdate_memory_task(
+        self,
+        task: str,
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+    ) -> str:
         """Updates the memory with a task"""
         self.set_log_level()
 
@@ -543,6 +557,8 @@ class MemoryManager:
             existing_memories=existing_memories,
             user_id=user_id,
             db=self.db,
+            agent_id=agent_id,
+            team_id=team_id,
             delete_memories=self.delete_memories,
             update_memories=self.update_memories,
             add_memories=self.add_memories,
@@ -1196,6 +1212,8 @@ class MemoryManager:
         existing_memories: List[Dict[str, Any]],
         user_id: str,
         db: BaseDb,
+        agent_id: Optional[str] = None,
+        team_id: Optional[str] = None,
         delete_memories: bool = True,
         update_memories: bool = True,
         add_memories: bool = True,
@@ -1214,6 +1232,8 @@ class MemoryManager:
                 user_id,
                 db,
                 task,
+                agent_id=agent_id,
+                team_id=team_id,
                 enable_delete_memory=delete_memories,
                 enable_clear_memory=clear_memories,
                 enable_update_memory=update_memories,
@@ -1252,6 +1272,8 @@ class MemoryManager:
         existing_memories: List[Dict[str, Any]],
         user_id: str,
         db: Union[BaseDb, AsyncBaseDb],
+        agent_id: Optional[str] = None,
+        team_id: Optional[str] = None,
         delete_memories: bool = True,
         clear_memories: bool = True,
         update_memories: bool = True,
@@ -1271,6 +1293,8 @@ class MemoryManager:
                     user_id,
                     db,
                     task,
+                    agent_id=agent_id,
+                    team_id=team_id,
                     enable_delete_memory=delete_memories,
                     enable_clear_memory=clear_memories,
                     enable_update_memory=update_memories,
@@ -1283,6 +1307,8 @@ class MemoryManager:
                     user_id,
                     db,
                     task,
+                    agent_id=agent_id,
+                    team_id=team_id,
                     enable_delete_memory=delete_memories,
                     enable_clear_memory=clear_memories,
                     enable_update_memory=update_memories,
@@ -1380,6 +1406,8 @@ class MemoryManager:
                         memory=memory,
                         topics=topics,
                         user_id=user_id,
+                        agent_id=agent_id,
+                        team_id=team_id,
                         input=input_string,
                     )
                 )
@@ -1502,6 +1530,9 @@ class MemoryManager:
                             memory_id=memory_id,
                             memory=memory,
                             topics=topics,
+                            user_id=user_id,
+                            agent_id=agent_id,
+                            team_id=team_id,
                             input=input_string,
                         )
                     )
@@ -1511,6 +1542,9 @@ class MemoryManager:
                             memory_id=memory_id,
                             memory=memory,
                             topics=topics,
+                            user_id=user_id,
+                            agent_id=agent_id,
+                            team_id=team_id,
                             input=input_string,
                         )
                     )

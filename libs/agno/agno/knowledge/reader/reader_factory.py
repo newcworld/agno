@@ -84,6 +84,10 @@ class ReaderFactory:
             "name": "DoclingReader",
             "description": "Converts multiple document formats like PDF, DOCX, PPTX, images, HTML, etc. using IBM's Docling library",
         },
+        "markitdown": {
+            "name": "MarkItDownReader",
+            "description": "Converts images, HTML, and other formats to Markdown using Microsoft's MarkItDown (supports LLM vision for images)",
+        },
     }
 
     @classmethod
@@ -308,6 +312,18 @@ class ReaderFactory:
         return DoclingReader(**config)
 
     @classmethod
+    def _get_markitdown_reader(cls, **kwargs) -> Reader:
+        """Get MarkItDown reader instance."""
+        from agno.knowledge.reader.markitdown_reader import MarkItDownReader
+
+        config: Dict[str, Any] = {
+            "name": "MarkItDown Reader",
+            "description": "Converts images, HTML, and other formats to Markdown using Microsoft's MarkItDown",
+        }
+        config.update(kwargs)
+        return MarkItDownReader(**config)
+
+    @classmethod
     def _get_reader_method(cls, reader_key: str) -> Callable[[], Reader]:
         """Get the appropriate reader method for the given key."""
         method_name = f"_get_{reader_key}_reader"
@@ -352,6 +368,7 @@ class ReaderFactory:
             "web_search": ("agno.knowledge.reader.web_search_reader", "WebSearchReader"),
             "llms_txt": ("agno.knowledge.reader.llms_txt_reader", "LLMsTxtReader"),
             "docling": ("agno.knowledge.reader.docling_reader", "DoclingReader"),
+            "markitdown": ("agno.knowledge.reader.markitdown_reader", "MarkItDownReader"),
         }
 
         if reader_key not in reader_class_map:
@@ -379,10 +396,26 @@ class ReaderFactory:
 
         return reader
 
+    # Extensions handled by markitdown (images, HTML, audio, etc.)
+    _MARKITDOWN_EXTENSIONS = {
+        # Images
+        ".png", ".jpeg", ".jpg", ".tiff", ".tif", ".bmp", ".webp",
+        # HTML
+        ".html", ".htm", ".xhtml",
+        # Audio (markitdown supports wav/mp3 transcription)
+        ".wav", ".mp3",
+    }
+
+    # MIME types that map to markitdown
+    _MARKITDOWN_MIME_TYPES = {
+        "image/png", "image/jpeg", "image/jpg", "image/tiff", "image/bmp", "image/webp",
+        "text/html", "application/xhtml+xml",
+        "audio/wav", "audio/mpeg", "audio/mp3",
+    }
+
     @classmethod
     def get_reader_for_extension(cls, extension: str) -> Reader:
-        """Get the appropriate reader for a file extension."""
-        # TODO: add docling for unique file extensions eg: images, audios, etc.
+        """Get the appropriate reader for a file extension or MIME type."""
         extension = extension.lower()
 
         if extension in [".pdf", "application/pdf"]:
@@ -406,8 +439,9 @@ class ReaderFactory:
             return cls.create_reader("markdown")
         elif extension in [".txt", ".text"]:
             return cls.create_reader("text")
+        elif extension in cls._MARKITDOWN_EXTENSIONS or extension in cls._MARKITDOWN_MIME_TYPES:
+            return cls.create_reader("markitdown")
         else:
-            # Default to text reader for unknown extensions
             return cls.create_reader("text")
 
     @classmethod
