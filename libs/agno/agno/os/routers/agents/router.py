@@ -105,6 +105,8 @@ async def agent_response_streamer(
             additional_data=e.additional_data,
         )
         yield format_sse_event(error_response)
+    except asyncio.CancelledError:
+        return
     except Exception as e:
         import traceback
 
@@ -221,6 +223,8 @@ async def agent_continue_response_streamer(
             additional_data=e.additional_data,
         )
         yield format_sse_event(error_response)
+    except asyncio.CancelledError:
+        return
     except Exception as e:
         import traceback
 
@@ -231,6 +235,7 @@ async def agent_continue_response_streamer(
             error_id=e.error_id if hasattr(e, "error_id") else None,
         )
         yield format_sse_event(error_response)
+        return
 
 
 async def agent_resumable_continue_response_streamer(
