@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 from agno.agent import Agent
 from agno.compression.manager import CompressionManager
+from agno.session.progress import RunProgressSummaryManager
 from agno.db.base import AsyncBaseDb, BaseDb
 from agno.eval.base import BaseEval
 from agno.filters import FilterExpr
@@ -156,6 +157,8 @@ def __init__(
     add_learnings_to_context: bool = True,
     compress_tool_results: bool = False,
     compression_manager: Optional["CompressionManager"] = None,
+    progress_summary_manager: Optional["RunProgressSummaryManager"] = None,
+    progress_summary_interval: float = 30.0,
     metadata: Optional[Dict[str, Any]] = None,
     reasoning: bool = False,
     reasoning_model: Optional[Union[Model, str]] = None,
@@ -348,6 +351,10 @@ def __init__(
     # Context compression settings
     team.compress_tool_results = compress_tool_results
     team.compression_manager = compression_manager
+
+    # Run progress snapshots
+    team.progress_summary_manager = progress_summary_manager
+    team.progress_summary_interval = progress_summary_interval
 
     team.metadata = metadata
 

@@ -3346,11 +3346,22 @@ async def _arun_background_stream(
                 except Exception:
                     log_warning(f"Failed to publish SSE data to subscribers for run {run_id}")
 
+                # Periodically persist run state so progress is available mid-run
                 if _time() - _last_save_ts >= _SAVE_INTERVAL:
                     try:
-                        team_session.upsert_run(run_response=run_response)
+                        import copy
+
+                        _periodic_copy = copy.copy(run_response)
+                        scrub_run_output_for_storage(team, _periodic_copy)
+                        _has_progress = _periodic_copy.progress_summary is not None
+
+                        team_session.upsert_run(run_response=_periodic_copy)
                         await asave_session(team, session=team_session)
                         _last_save_ts = _time()
+                        log_debug(
+                            f"Background team run {run_id}: periodic save "
+                            f"(progress_summary={'yes' if _has_progress else 'no'})"
+                        )
                     except Exception:
                         pass
 
@@ -4255,6 +4266,12 @@ def scrub_run_output_for_storage(team: "Team", run_response: TeamRunOutput) -> b
     if not team.store_history_messages:
         scrub_history_messages_from_run_output(run_response)
         scrubbed = True
+
+    # Always clear events and tools for storage — AgentOS force-enables
+    # store_events for SSE routing, but we never need them in the DB.
+    run_response.events = None
+    run_response.tools = None
+    scrubbed = True
 
     return scrubbed
 

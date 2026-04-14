@@ -2031,9 +2031,17 @@ async def _arun_background_stream(
                 # Periodically persist run state so chat_history is available mid-run
                 if _time() - _last_save_ts >= _SAVE_INTERVAL:
                     try:
-                        agent_session.upsert_run(run=run_response)
+                        import copy
+
+                        _periodic_copy = copy.copy(run_response)
+                        scrub_run_output_for_storage(agent, _periodic_copy)
+                        _has_progress = _periodic_copy.progress_summary is not None
+                        agent_session.upsert_run(run=_periodic_copy)
                         await asave_session(agent, session=agent_session)
                         _last_save_ts = _time()
+                        log_debug(
+                            f"Background run {run_id}: periodic save (progress_summary={'yes' if _has_progress else 'no'})"
+                        )
                     except Exception:
                         pass
 
@@ -4862,6 +4870,11 @@ def scrub_run_output_for_storage(agent: Agent, run_response: RunOutput) -> None:
 
     if not agent.store_history_messages:
         scrub_history_messages_from_run_output(run_response)
+
+    # Always clear events and tools for storage — AgentOS force-enables
+    # store_events for SSE routing, but we never need them in the DB.
+    run_response.events = None
+    run_response.tools = None
 
 
 def _handle_run_cancellation(

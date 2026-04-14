@@ -159,7 +159,7 @@ class TeamSession:
             return []
 
         if skip_statuses is None:
-            skip_statuses = [RunStatus.paused, RunStatus.cancelled, RunStatus.error]
+            skip_statuses = [RunStatus.paused, RunStatus.cancelled, RunStatus.error, RunStatus.interrupted]
 
         session_runs = self.runs
 
@@ -357,6 +357,21 @@ class TeamSession:
         context_parts.append("")  # Empty line before current input
 
         return "\n".join(context_parts)
+
+    def get_last_interrupted_progress(self) -> Optional[Dict[str, Any]]:
+        """If the most recent run was INTERRUPTED and has a progress_summary, return it."""
+        if not self.runs:
+            return None
+
+        last_run = self.runs[-1]
+        if (
+            hasattr(last_run, "status")
+            and last_run.status == RunStatus.interrupted
+            and hasattr(last_run, "progress_summary")
+            and last_run.progress_summary
+        ):
+            return last_run.progress_summary
+        return None
 
     def get_session_summary(self) -> Optional[SessionSummary]:
         """Get the session summary for the session"""

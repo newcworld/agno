@@ -1083,6 +1083,8 @@ async def _ahandle_model_response_stream(
     session_state: Optional[Dict[str, Any]] = None,
     run_context: Optional[RunContext] = None,
 ) -> AsyncIterator[Union[TeamRunOutputEvent, RunOutputEvent]]:
+    from time import time as _time
+
     team.model = cast(Model, team.model)
 
     reasoning_state = {
@@ -1098,6 +1100,9 @@ async def _ahandle_model_response_stream(
     if should_parse_structured_output:
         log_debug("Response model set, model response is not streamed.")
         stream_model_response = False
+
+    _last_progress_ts: float = _time()
+    _progress_interval: float = team.progress_summary_interval
 
     full_model_response = ModelResponse()
     model_stream = acall_model_stream_with_fallback(
@@ -1149,6 +1154,29 @@ async def _ahandle_model_response_stream(
                         events_to_skip=team.events_to_skip,
                         store_events=team.store_events,
                     )
+
+                # Generate run progress summary on a time-based interval
+                if team.progress_summary_manager and (_time() - _last_progress_ts >= _progress_interval):
+                    try:
+                        log_debug(
+                            f"Generating team progress summary (messages={len(run_messages.messages)}, "
+                            f"interval={_time() - _last_progress_ts:.1f}s)"
+                        )
+                        _progress = await team.progress_summary_manager.acreate_progress_summary(
+                            messages=run_messages.messages,
+                            previous_summary=run_response.progress_summary,
+                        )
+                        if _progress:
+                            run_response.progress_summary = _progress.to_dict()
+                            log_debug(
+                                f"Team progress summary updated: {_progress.summary[:80]}..."
+                                if len(_progress.summary) > 80
+                                else f"Team progress summary updated: {_progress.summary}"
+                            )
+                        _last_progress_ts = _time()
+                    except Exception as _progress_err:
+                        log_debug(f"Team progress summary generation failed: {_progress_err}")
+
                 continue
 
             # Handle compression events

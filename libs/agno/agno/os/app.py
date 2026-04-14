@@ -107,6 +107,70 @@ async def db_lifespan(app: FastAPI, agent_os: "AgentOS"):
 
 
 @asynccontextmanager
+async def stale_run_cleanup_lifespan(app: FastAPI, agent_os: "AgentOS"):
+    """On startup, mark any RUNNING/PENDING runs as INTERRUPTED so they are not treated as active."""
+    from agno.db.base import SessionType
+    from agno.run.base import RunStatus
+
+    seen_dbs: set[int] = set()
+    db_instances: list[Union[BaseDb, AsyncBaseDb]] = []
+
+    for agent in agent_os.agents or []:
+        if isinstance(agent, RemoteAgent):
+            continue
+        if agent.db and id(agent.db) not in seen_dbs:
+            seen_dbs.add(id(agent.db))
+            db_instances.append(agent.db)
+
+    for team in agent_os.teams or []:
+        if isinstance(team, RemoteTeam):
+            continue
+        if team.db and id(team.db) not in seen_dbs:
+            seen_dbs.add(id(team.db))
+            db_instances.append(team.db)
+
+    stale_statuses = {RunStatus.running, RunStatus.pending}
+    updated_count = 0
+
+    for db in db_instances:
+        try:
+            if not hasattr(db, "get_sessions") or not hasattr(db, "upsert_session"):
+                continue
+
+            for st in (SessionType.AGENT, SessionType.TEAM):
+                try:
+                    sessions = db.get_sessions(session_type=st, deserialize=True)
+                except Exception:
+                    continue
+                if not isinstance(sessions, list):
+                    continue
+
+                for session in sessions:
+                    if not hasattr(session, "runs") or not session.runs:
+                        continue
+
+                    changed = False
+                    for run in session.runs:
+                        if hasattr(run, "status") and run.status in stale_statuses:
+                            run.status = RunStatus.interrupted
+                            changed = True
+
+                    if changed:
+                        try:
+                            db.upsert_session(session)
+                            updated_count += 1
+                        except Exception as e:
+                            log_warning(f"Failed to update stale runs in session {session.session_id}: {e}")
+        except Exception as e:
+            log_warning(f"Error during stale run cleanup: {e}")
+
+    if updated_count > 0:
+        log_info(f"Marked stale runs as INTERRUPTED in {updated_count} session(s)")
+
+    yield
+
+
+@asynccontextmanager
 async def scheduler_lifespan(app: FastAPI, agent_os: "AgentOS"):
     """Start and stop the scheduler poller."""
     from agno.scheduler import ScheduleExecutor, SchedulePoller
@@ -688,6 +752,9 @@ class AgentOS:
             # The async database lifespan
             lifespans.append(partial(db_lifespan, agent_os=self))
 
+            # Mark any RUNNING/PENDING runs from a previous process as INTERRUPTED
+            lifespans.append(partial(stale_run_cleanup_lifespan, agent_os=self))
+
             # The scheduler lifespan (after db so tables exist)
             if self._scheduler_enabled and self.db is not None:
                 lifespans.append(partial(scheduler_lifespan, agent_os=self))
@@ -719,6 +786,9 @@ class AgentOS:
 
             # Async database initialization lifespan
             lifespans.append(partial(db_lifespan, agent_os=self))  # type: ignore
+
+            # Mark any RUNNING/PENDING runs from a previous process as INTERRUPTED
+            lifespans.append(partial(stale_run_cleanup_lifespan, agent_os=self))  # type: ignore
 
             # The scheduler lifespan (after db so tables exist)
             if self._scheduler_enabled and self.db is not None:

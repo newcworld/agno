@@ -1148,6 +1148,40 @@ async def aget_user_message(
             )
 
 
+def _inject_interrupted_progress(session: Optional[AgentSession], run_messages: RunMessages) -> None:
+    """If the previous run in this session was INTERRUPTED and has a progress_summary,
+    inject it as a context message so the agent can continue from where it left off."""
+    if session is None or not hasattr(session, "get_last_interrupted_progress"):
+        return
+
+    progress = session.get_last_interrupted_progress()
+    if not progress:
+        return
+
+    summary_text = progress.get("summary", "")
+    artifacts = progress.get("artifacts", [])
+    next_steps = progress.get("next_steps", "")
+
+    lines = [
+        "[Previous run was interrupted. Progress summary:",
+        summary_text,
+    ]
+    if artifacts:
+        lines.append(f"Artifacts produced: {artifacts}")
+    if next_steps:
+        lines.append(f"Next steps were: {next_steps}")
+    lines.append("]")
+    lines.append("Please verify existing artifacts and continue from where the previous run left off.")
+
+    context_msg = Message(
+        role="system",
+        content="\n".join(lines),
+        from_history=True,
+    )
+    run_messages.messages.append(context_msg)
+    log_debug("Injected interrupted run progress summary into context")
+
+
 # ---------------------------------------------------------------------------
 # Run messages
 # ---------------------------------------------------------------------------
@@ -1270,6 +1304,9 @@ def get_run_messages(
             log_debug(f"Adding {len(history_copy)} messages from history")
 
             run_messages.messages += history_copy
+
+    # 3.5. Inject progress summary from a previously interrupted run
+    _inject_interrupted_progress(session, run_messages)
 
     # 4. Add user message to run_messages
     user_message: Optional[Message] = None
@@ -1475,6 +1512,9 @@ async def aget_run_messages(
             log_debug(f"Adding {len(history_copy)} messages from history")
 
             run_messages.messages += history_copy
+
+    # 3.5. Inject progress summary from a previously interrupted run
+    _inject_interrupted_progress(session, run_messages)
 
     # 4. Add user message to run_messages
     user_message: Optional[Message] = None

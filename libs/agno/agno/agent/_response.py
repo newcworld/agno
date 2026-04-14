@@ -1197,6 +1197,8 @@ async def ahandle_model_response_stream(
     session_state: Optional[Dict[str, Any]] = None,
     run_context: Optional[RunContext] = None,
 ) -> AsyncIterator[RunOutputEvent]:
+    from time import time as _time
+
     agent.model = cast(Model, agent.model)
 
     reasoning_state = {
@@ -1204,6 +1206,9 @@ async def ahandle_model_response_stream(
         "reasoning_time_taken": 0.0,
     }
     model_response = ModelResponse(content="")
+
+    _last_progress_ts: float = _time()
+    _progress_interval: float = agent.progress_summary_interval
 
     # Get output_schema from run_context
     output_schema = run_context.output_schema if run_context else None
@@ -1264,6 +1269,31 @@ async def ahandle_model_response_stream(
                         events_to_skip=agent.events_to_skip,  # type: ignore
                         store_events=agent.store_events,
                     )
+
+                # Generate run progress summary on a time-based interval.
+                # Stored on run_response and automatically persisted by the
+                # outer periodic save in _background_producer.
+                if agent.progress_summary_manager and (_time() - _last_progress_ts >= _progress_interval):
+                    try:
+                        log_debug(
+                            f"Generating progress summary (messages={len(run_messages.messages)}, "
+                            f"interval={_time() - _last_progress_ts:.1f}s)"
+                        )
+                        _progress = await agent.progress_summary_manager.acreate_progress_summary(
+                            messages=run_messages.messages,
+                            previous_summary=run_response.progress_summary,
+                        )
+                        if _progress:
+                            run_response.progress_summary = _progress.to_dict()
+                            log_debug(
+                                f"Progress summary updated: {_progress.summary[:80]}..."
+                                if len(_progress.summary) > 80
+                                else f"Progress summary updated: {_progress.summary}"
+                            )
+                        _last_progress_ts = _time()
+                    except Exception as _progress_err:
+                        log_debug(f"Progress summary generation failed: {_progress_err}")
+
                 continue
 
             # Handle compression events

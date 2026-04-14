@@ -759,6 +759,8 @@ class TeamRunOutput:
     metadata: Optional[Dict[str, Any]] = None
     session_state: Optional[Dict[str, Any]] = None
 
+    progress_summary: Optional[Dict[str, Any]] = None
+
     references: Optional[List[MessageReferences]] = None
     additional_input: Optional[List[Message]] = None
     reasoning_steps: Optional[List[ReasoningStep]] = None

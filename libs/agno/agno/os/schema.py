@@ -435,6 +435,7 @@ class RunSchema(BaseModel):
     messages: Optional[List[dict]] = Field(None, description="Message history for the run")
     tools: Optional[List[dict]] = Field(None, description="Tools used in the run")
     events: Optional[List[dict]] = Field(None, description="Events generated during the run")
+    progress_summary: Optional[dict] = Field(None, description="Periodic progress snapshot for long-running runs")
     created_at: Optional[datetime] = Field(None, description="Run creation timestamp")
     references: Optional[List[dict]] = Field(None, description="References cited in the run")
     citations: Optional[Dict[str, Any]] = Field(
@@ -470,6 +471,7 @@ class RunSchema(BaseModel):
             messages=[message for message in run_dict.get("messages", [])] if run_dict.get("messages") else None,
             tools=[tool for tool in run_dict.get("tools", [])] if run_dict.get("tools") else None,
             events=[event for event in run_dict["events"]] if run_dict.get("events") else None,
+            progress_summary=run_dict.get("progress_summary"),
             references=run_dict.get("references", []),
             citations=run_dict.get("citations", None),
             reasoning_messages=run_dict.get("reasoning_messages", []),
@@ -499,6 +501,7 @@ class TeamRunSchema(BaseModel):
     tools: Optional[List[dict]] = Field(None, description="Tools used in the run")
     messages: Optional[List[dict]] = Field(None, description="Message history for the run")
     events: Optional[List[dict]] = Field(None, description="Events generated during the run")
+    progress_summary: Optional[dict] = Field(None, description="Periodic progress snapshot for long-running runs")
     created_at: Optional[datetime] = Field(None, description="Run creation timestamp")
     references: Optional[List[dict]] = Field(None, description="References cited in the run")
     citations: Optional[Dict[str, Any]] = Field(
@@ -532,6 +535,7 @@ class TeamRunSchema(BaseModel):
             messages=[message for message in run_dict.get("messages", [])] if run_dict.get("messages") else None,
             tools=[tool for tool in run_dict.get("tools", [])] if run_dict.get("tools") else None,
             events=[event for event in run_dict["events"]] if run_dict.get("events") else None,
+            progress_summary=run_dict.get("progress_summary"),
             created_at=to_utc_datetime(run_dict.get("created_at")),
             references=run_dict.get("references", []),
             citations=run_dict.get("citations", None),

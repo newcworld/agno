@@ -33,6 +33,7 @@ from agno.agent import (
     _utils,
 )
 from agno.compression.manager import CompressionManager
+from agno.session.progress import RunProgressSummaryManager
 from agno.culture.manager import CultureManager
 from agno.db.base import AsyncBaseDb, BaseDb, ComponentType, UserMemory
 from agno.db.schemas.culture import CulturalKnowledge
@@ -357,6 +358,14 @@ class Agent:
     # Compression manager for compressing tool call results
     compression_manager: Optional[CompressionManager] = None
 
+    # --- Run Progress Snapshots ---
+    # Manager for generating periodic progress summaries during long-running background executions.
+    # When set, a lightweight model periodically summarizes progress so that if the process crashes,
+    # the summary is available in the DB for recovery.
+    progress_summary_manager: Optional[RunProgressSummaryManager] = None
+    # Interval in seconds between progress summary generations (default 30s)
+    progress_summary_interval: float = 30.0
+
     # --- Debug ---
     # Enable debug logs
     debug_mode: bool = False
@@ -409,6 +418,8 @@ class Agent:
         session_summary_manager: Optional[SessionSummaryManager] = None,
         compress_tool_results: bool = False,
         compression_manager: Optional[CompressionManager] = None,
+        progress_summary_manager: Optional[RunProgressSummaryManager] = None,
+        progress_summary_interval: float = 30.0,
         add_history_to_context: bool = False,
         num_history_runs: Optional[int] = None,
         num_history_messages: Optional[int] = None,
@@ -553,6 +564,10 @@ class Agent:
         # Context compression settings
         self.compress_tool_results = compress_tool_results
         self.compression_manager = compression_manager
+
+        # Run progress snapshots
+        self.progress_summary_manager = progress_summary_manager
+        self.progress_summary_interval = progress_summary_interval
 
         self.add_history_to_context = add_history_to_context
         self.num_history_runs = num_history_runs

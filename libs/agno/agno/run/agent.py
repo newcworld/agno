@@ -650,6 +650,8 @@ class RunOutput:
     metadata: Optional[Dict[str, Any]] = None
     session_state: Optional[Dict[str, Any]] = None
 
+    progress_summary: Optional[Dict[str, Any]] = None
+
     created_at: int = field(default_factory=lambda: int(time()))
 
     events: Optional[List[RunOutputEvent]] = None
