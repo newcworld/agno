@@ -54,6 +54,8 @@ class CodingTools(Toolkit):
         "uniq",
         "tr",
         "cut",
+        "file",
+        "pwd",
         # Frontend / Node.js ecosystem
         "node",
         "npm",
