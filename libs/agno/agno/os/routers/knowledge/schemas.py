@@ -23,6 +23,15 @@ class ContentStatusResponse(BaseModel):
     status_message: str = Field("", description="Status message or error details")
 
 
+class DocumentChunkSchema(BaseModel):
+    """Schema for a document chunk extracted from content."""
+
+    id: str = Field(..., description="Unique identifier for the document chunk")
+    content: str = Field(..., description="Text content of the chunk")
+    name: Optional[str] = Field(None, description="Name of the document")
+    meta_data: Optional[Dict[str, Any]] = Field(None, description="Metadata associated with the chunk")
+
+
 class ContentResponseSchema(BaseModel):
     id: str = Field(..., description="Unique identifier for the content")
     name: Optional[str] = Field(None, description="Name of the content")
@@ -36,6 +45,7 @@ class ContentResponseSchema(BaseModel):
     status_message: Optional[str] = Field(None, description="Status message or error details")
     created_at: Optional[datetime] = Field(None, description="Timestamp when content was created")
     updated_at: Optional[datetime] = Field(None, description="Timestamp when content was last updated")
+    documents: Optional[List[DocumentChunkSchema]] = Field(None, description="Extracted document chunks (only in detail endpoint)")
 
     @classmethod
     def from_dict(cls, content: Dict[str, Any]) -> "ContentResponseSchema":

@@ -20,6 +20,7 @@ from agno.os.routers.knowledge.schemas import (
     ContentStatus,
     ContentStatusResponse,
     ContentUpdateSchema,
+    DocumentChunkSchema,
     ReaderSchema,
     RemoteContentSourceSchema,
     SourceFileSchema,
@@ -576,6 +577,21 @@ def attach_routes(router: APIRouter, knowledge_instances: List[Union[Knowledge, 
                 "updated_at": content.updated_at,
             }
         )
+
+        try:
+            docs = await knowledge.aget_documents_by_content_id(content_id=content_id)
+            if docs:
+                response.documents = [
+                    DocumentChunkSchema(
+                        id=doc.id,
+                        content=doc.content,
+                        name=doc.name,
+                        meta_data=doc.meta_data,
+                    )
+                    for doc in docs
+                ]
+        except Exception:
+            pass
 
         return response
 

@@ -661,6 +661,43 @@ class Knowledge(RemoteKnowledge):
             return None
         return self._content_row_to_content(content_row)
 
+    async def aget_documents_by_content_id(self, content_id: str) -> List[Document]:
+        """Return all Document chunks linked to a given content_id from the vector DB."""
+        from agno.vectordb import VectorDb
+
+        self.vector_db = cast(VectorDb, self.vector_db)
+        if self.vector_db is None:
+            return []
+
+        try:
+            import asyncio
+
+            from sqlalchemy import select as sa_select
+
+            table = self.vector_db.table  # type: ignore[attr-defined]
+            session_factory = self.vector_db.Session  # type: ignore[attr-defined]
+
+            def _query():
+                with session_factory() as sess:
+                    stmt = sa_select(table.c.id, table.c.name, table.c.content, table.c.meta_data).where(
+                        table.c.content_id == content_id
+                    )
+                    rows = sess.execute(stmt).fetchall()
+                    return [
+                        Document(
+                            id=row.id,
+                            name=row.name,
+                            content=row.content or "",
+                            meta_data=row.meta_data,
+                        )
+                        for row in rows
+                    ]
+
+            return await asyncio.to_thread(_query)
+        except Exception as e:
+            log_warning(f"Could not fetch documents for content_id={content_id}: {e}")
+            return []
+
     def get_content_status(self, content_id: str) -> Tuple[Optional[ContentStatus], Optional[str]]:
         if self.contents_db is None:
             raise ValueError("No contents db provided")
