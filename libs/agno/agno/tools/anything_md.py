@@ -34,7 +34,7 @@ class AnythingMDTools(Toolkit):
         all: bool = False,
         **kwargs: Any,
     ):
-        self.api_url = (api_url or getenv("ANYTHING_MD_API_URL", "https://anything-md.doocs.org")).rstrip("/")
+        self.api_url = (api_url or getenv("ANYTHING_MD_API_URL") or "https://anything-md.doocs.org").rstrip("/")
         self.max_content_length = max_content_length
         self.timeout = timeout
 

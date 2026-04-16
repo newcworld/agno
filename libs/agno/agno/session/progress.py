@@ -152,10 +152,8 @@ class RunProgressSummaryManager:
             try:
                 from agno.utils.string import parse_response_model_str
 
-                parsed: Optional[RunProgressSummaryResponse] = parse_response_model_str(
-                    response.content, RunProgressSummaryResponse
-                )
-                if parsed is not None:
+                parsed = parse_response_model_str(response.content, RunProgressSummaryResponse)
+                if isinstance(parsed, RunProgressSummaryResponse):
                     return RunProgressSummary(
                         summary=parsed.summary,
                         artifacts=parsed.artifacts,
