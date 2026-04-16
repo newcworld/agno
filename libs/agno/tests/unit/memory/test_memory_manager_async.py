@@ -251,10 +251,12 @@ async def test_aupdate_memory_task_refreshes_async_db():
         existing_memories,
         user_id,
         db,
-        delete_memories,
-        update_memories,
-        add_memories,
-        clear_memories,
+        agent_id=None,
+        team_id=None,
+        delete_memories=True,
+        clear_memories=True,
+        update_memories=True,
+        add_memories=True,
     ):
         await db.upsert_user_memory(
             UserMemory(
