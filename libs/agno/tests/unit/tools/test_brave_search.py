@@ -1,31 +1,29 @@
 import json
 import os
-from unittest.mock import MagicMock, patch
+import sys
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytest.importorskip("brave_search_python_client")
+
 from agno.tools.bravesearch import BraveSearchTools
+
+pytestmark = pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="brave-search-python-client requires Python 3.11+",
+)
 
 
 @pytest.fixture
 def mock_brave_client():
-    with patch("agno.tools.bravesearch.Brave") as mock_brave:
-        # Create a mock instance that will be returned when Brave() is called
+    with patch("agno.tools.bravesearch.BraveSearch") as mock_cls:
         mock_instance = MagicMock()
-
-        # Mock the search method to return a proper result
         mock_result = MagicMock()
         mock_result.web = MagicMock()
         mock_result.web.results = []
-        mock_instance.search.return_value = mock_result
-
-        # Mock the _get method to return a proper response
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"web": {"results": []}}
-        mock_instance._get.return_value = mock_response
-
-        mock_brave.return_value = mock_instance
+        mock_instance.web = AsyncMock(return_value=mock_result)
+        mock_cls.return_value = mock_instance
         yield mock_instance
 
 
@@ -36,7 +34,7 @@ def brave_search_tools(mock_brave_client):
 
 
 def test_init_with_api_key():
-    with patch("agno.tools.bravesearch.Brave"):
+    with patch("agno.tools.bravesearch.BraveSearch"):
         tools = BraveSearchTools(api_key="test_key")
         assert tools.api_key == "test_key"
         assert tools.fixed_max_results is None
@@ -45,32 +43,44 @@ def test_init_with_api_key():
 
 def test_init_with_env_var():
     os.environ["BRAVE_API_KEY"] = "env_test_key"
-    with patch("agno.tools.bravesearch.Brave"):
+    with patch("agno.tools.bravesearch.BraveSearch"):
         tools = BraveSearchTools()
         assert tools.api_key == "env_test_key"
+
+
+def test_init_with_alternate_env_var():
+    if "BRAVE_API_KEY" in os.environ:
+        del os.environ["BRAVE_API_KEY"]
+    os.environ["BRAVE_SEARCH_PYTHON_CLIENT_API_KEY"] = "alt_key"
+    with patch("agno.tools.bravesearch.BraveSearch"):
+        tools = BraveSearchTools()
+        assert tools.api_key == "alt_key"
+    del os.environ["BRAVE_SEARCH_PYTHON_CLIENT_API_KEY"]
 
 
 def test_init_without_api_key():
     if "BRAVE_API_KEY" in os.environ:
         del os.environ["BRAVE_API_KEY"]
+    if "BRAVE_SEARCH_PYTHON_CLIENT_API_KEY" in os.environ:
+        del os.environ["BRAVE_SEARCH_PYTHON_CLIENT_API_KEY"]
     with pytest.raises(ValueError, match="BRAVE_API_KEY is required"):
         BraveSearchTools()
 
 
 def test_init_with_fixed_params():
-    with patch("agno.tools.bravesearch.Brave"):
+    with patch("agno.tools.bravesearch.BraveSearch"):
         tools = BraveSearchTools(api_key="test_key", fixed_max_results=10, fixed_language="fr")
         assert tools.fixed_max_results == 10
         assert tools.fixed_language == "fr"
 
 
 def test_toolkit_integration():
-    """Test that the toolkit is properly initialized with name and tools"""
-    with patch("agno.tools.bravesearch.Brave"):
+    with patch("agno.tools.bravesearch.BraveSearch"):
         tools = BraveSearchTools(api_key="test_key")
         assert tools.name == "brave_search"
         assert len(tools.tools) == 1
         assert tools.tools[0].__name__ == "brave_search"
+        assert "brave_search" in tools.async_functions
 
 
 def test_brave_search_empty_query(brave_search_tools):
@@ -79,30 +89,24 @@ def test_brave_search_empty_query(brave_search_tools):
 
 
 def test_brave_search_none_query(brave_search_tools):
-    """Test with None query"""
     result = brave_search_tools.brave_search(None)
     assert json.loads(result) == {"error": "Please provide a query to search for"}
 
 
 def test_brave_search_whitespace_query(brave_search_tools, mock_brave_client):
-    """Test with whitespace-only query - currently treated as valid query"""
-    # Note: Current implementation treats whitespace as valid query
-    # This could be a future improvement to strip/validate queries
     mock_result = MagicMock()
     mock_result.web.results = []
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
     result = brave_search_tools.brave_search("   ")
     result_dict = json.loads(result)
 
-    # Current behavior: whitespace queries are processed as normal
     assert result_dict["query"] == "   "
     assert result_dict["web_results"] == []
     assert result_dict["total_results"] == 0
 
 
 def test_brave_search_successful(brave_search_tools, mock_brave_client):
-    # Mock the search results
     mock_web_result = MagicMock()
     mock_web_result.title = "Test Title"
     mock_web_result.url = "https://test.com"
@@ -110,7 +114,7 @@ def test_brave_search_successful(brave_search_tools, mock_brave_client):
 
     mock_result = MagicMock()
     mock_result.web.results = [mock_web_result]
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
     result = brave_search_tools.brave_search("test query")
     result_dict = json.loads(result)
@@ -123,19 +127,36 @@ def test_brave_search_successful(brave_search_tools, mock_brave_client):
     assert result_dict["total_results"] == 1
 
 
+@pytest.mark.asyncio
+async def test_abrave_search_successful(brave_search_tools, mock_brave_client):
+    mock_web_result = MagicMock()
+    mock_web_result.title = "Async Title"
+    mock_web_result.url = "https://async.example"
+    mock_web_result.description = "Async Desc"
+
+    mock_result = MagicMock()
+    mock_result.web.results = [mock_web_result]
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
+
+    result = await brave_search_tools.abrave_search("async query")
+    result_dict = json.loads(result)
+    assert result_dict["query"] == "async query"
+    assert result_dict["web_results"][0]["title"] == "Async Title"
+    mock_brave_client.web.assert_awaited()
+
+
 def test_brave_search_with_multiple_results(brave_search_tools, mock_brave_client):
-    """Test search with multiple results"""
     mock_results = []
     for i in range(3):
         mock_result = MagicMock()
-        mock_result.title = f"Title {i}"
-        mock_result.url = f"https://test{i}.com"
-        mock_result.description = f"Description {i}"
+        mock_result.title = "Title {}".format(i)
+        mock_result.url = "https://test{}.com".format(i)
+        mock_result.description = "Description {}".format(i)
         mock_results.append(mock_result)
 
     mock_search_result = MagicMock()
     mock_search_result.web.results = mock_results
-    mock_brave_client.search.return_value = mock_search_result
+    mock_brave_client.web = AsyncMock(return_value=mock_search_result)
 
     result = brave_search_tools.brave_search("test query")
     result_dict = json.loads(result)
@@ -144,13 +165,12 @@ def test_brave_search_with_multiple_results(brave_search_tools, mock_brave_clien
     assert len(result_dict["web_results"]) == 3
     assert result_dict["total_results"] == 3
     for i in range(3):
-        assert result_dict["web_results"][i]["title"] == f"Title {i}"
-        assert result_dict["web_results"][i]["url"] == f"https://test{i}.com"
-        assert result_dict["web_results"][i]["description"] == f"Description {i}"
+        assert result_dict["web_results"][i]["title"] == "Title {}".format(i)
+        assert result_dict["web_results"][i]["url"] == "https://test{}.com".format(i)
+        assert result_dict["web_results"][i]["description"] == "Description {}".format(i)
 
 
 def test_brave_search_with_malformed_results(brave_search_tools, mock_brave_client):
-    """Test search with results missing attributes"""
     mock_web_result = MagicMock()
     mock_web_result.title = None
     mock_web_result.url = None
@@ -158,7 +178,7 @@ def test_brave_search_with_malformed_results(brave_search_tools, mock_brave_clie
 
     mock_result = MagicMock()
     mock_result.web.results = [mock_web_result]
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
     result = brave_search_tools.brave_search("test query")
     result_dict = json.loads(result)
@@ -166,97 +186,110 @@ def test_brave_search_with_malformed_results(brave_search_tools, mock_brave_clie
     assert result_dict["query"] == "test query"
     assert len(result_dict["web_results"]) == 1
     assert result_dict["web_results"][0]["title"] is None
-    assert result_dict["web_results"][0]["url"] == "None"  # str() conversion
+    assert result_dict["web_results"][0]["url"] == ""
     assert result_dict["web_results"][0]["description"] is None
     assert result_dict["total_results"] == 1
 
 
 def test_brave_search_with_custom_params(brave_search_tools, mock_brave_client):
-    # Mock the search results
     mock_result = MagicMock()
     mock_result.web.results = []
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
-    brave_search_tools.brave_search(query="test query", max_results=3, country="UK", search_lang="fr")
-
-    # Verify the search was called with correct parameters
-    mock_brave_client.search.assert_called_once_with(
-        q="test query", count=3, country="UK", search_lang="fr", result_filter="web"
+    brave_search_tools.brave_search(
+        query="test query",
+        max_results=3,
+        country="GB",
+        search_lang="fr",
+        retries=2,
+        wait_time=5,
+        result_filter="web",
+        freshness="pw",
+        summary=True,
     )
+
+    mock_brave_client.web.assert_awaited_once()
+    _args, kwargs = mock_brave_client.web.call_args
+    request = _args[0]
+    assert request.q == "test query"
+    assert request.count == 3
+    assert str(request.country) == "GB"
+    assert request.search_lang == "fr"
+    assert request.result_filter == "web"
+    assert request.freshness == "pw"
+    assert request.summary is True
+    assert kwargs["retries"] == 2
+    assert kwargs["wait_time"] == 5
 
 
 def test_brave_search_with_default_params(brave_search_tools, mock_brave_client):
-    """Test that default parameters are used when not specified"""
     mock_result = MagicMock()
     mock_result.web.results = []
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
     brave_search_tools.brave_search(query="test query")
 
-    # Verify the search was called with default parameters
-    mock_brave_client.search.assert_called_once_with(
-        q="test query", count=5, country="US", search_lang="en", result_filter="web"
-    )
+    _args, kwargs = mock_brave_client.web.call_args
+    request = _args[0]
+    assert request.q == "test query"
+    assert request.count == 5
+    assert str(request.country) == "US"
+    assert request.search_lang == "en"
+    assert request.result_filter == "web"
+    assert kwargs["retries"] == 0
 
 
-def test_brave_search_with_none_params(brave_search_tools, mock_brave_client):
-    """Test search with None parameters - should use defaults"""
+def test_brave_search_with_none_country(brave_search_tools, mock_brave_client):
     mock_result = MagicMock()
     mock_result.web.results = []
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
-    # Note: max_results and search_lang now have defaults, None parameters will be overridden
     brave_search_tools.brave_search(query="test query", country=None)
 
-    # Verify the search was called with default values for max_results and search_lang
-    mock_brave_client.search.assert_called_once_with(
-        q="test query", count=5, country=None, search_lang="en", result_filter="web"
-    )
+    _args, _kwargs = mock_brave_client.web.call_args
+    request = _args[0]
+    assert request.q == "test query"
+    assert str(request.country) == "ALL"
 
 
 def test_brave_search_with_fixed_params():
-    with patch("agno.tools.bravesearch.Brave") as mock_brave:
+    with patch("agno.tools.bravesearch.BraveSearch") as mock_cls:
         mock_instance = MagicMock()
-
-        # Mock the search method
         mock_result = MagicMock()
-        mock_result.web = MagicMock()
         mock_result.web.results = []
-        mock_instance.search.return_value = mock_result
-
-        # Mock the _get method
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"web": {"results": []}}
-        mock_instance._get.return_value = mock_response
-
-        mock_brave.return_value = mock_instance
+        mock_instance.web = AsyncMock(return_value=mock_result)
+        mock_cls.return_value = mock_instance
 
         tools = BraveSearchTools(api_key="test_key", fixed_max_results=5, fixed_language="fr")
 
         result = tools.brave_search(query="test query", max_results=10, search_lang="en")
         result_dict = json.loads(result)
 
-        # Verify the response structure
         assert result_dict["query"] == "test query"
         assert result_dict["web_results"] == []
         assert result_dict["total_results"] == 0
 
-        # Verify fixed parameters override the provided ones
-        mock_instance.search.assert_called_once_with(
-            q="test query",
-            count=5,  # Should use fixed_max_results (not the provided 10)
-            country="US",  # Should use default value
-            search_lang="fr",  # Should use fixed_language (not the provided "en")
-            result_filter="web",
-        )
+        _args, _kwargs = mock_instance.web.call_args
+        request = _args[0]
+        assert request.count == 5
+        assert request.search_lang == "fr"
+
+
+def test_brave_search_max_results_capped_at_20(brave_search_tools, mock_brave_client):
+    mock_result = MagicMock()
+    mock_result.web.results = []
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
+
+    brave_search_tools.brave_search(query="q", max_results=100)
+
+    _args, _kwargs = mock_brave_client.web.call_args
+    assert _args[0].count == 20
 
 
 def test_brave_search_no_web_results(brave_search_tools, mock_brave_client):
-    # Mock the search results with no web results
     mock_result = MagicMock()
     mock_result.web = None
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
     result = brave_search_tools.brave_search("test query")
     result_dict = json.loads(result)
@@ -267,10 +300,10 @@ def test_brave_search_no_web_results(brave_search_tools, mock_brave_client):
 
 
 def test_brave_search_web_attribute_missing(brave_search_tools, mock_brave_client):
-    """Test when search results object doesn't have 'web' attribute"""
-    mock_result = MagicMock()
-    del mock_result.web  # Remove the web attribute
-    mock_brave_client.search.return_value = mock_result
+    class BareResponse:
+        pass
+
+    mock_brave_client.web = AsyncMock(return_value=BareResponse())
 
     result = brave_search_tools.brave_search("test query")
     result_dict = json.loads(result)
@@ -281,10 +314,9 @@ def test_brave_search_web_attribute_missing(brave_search_tools, mock_brave_clien
 
 
 def test_brave_search_empty_web_results(brave_search_tools, mock_brave_client):
-    """Test when web.results is empty list"""
     mock_result = MagicMock()
     mock_result.web.results = []
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
     result = brave_search_tools.brave_search("test query")
     result_dict = json.loads(result)
@@ -295,48 +327,70 @@ def test_brave_search_empty_web_results(brave_search_tools, mock_brave_client):
 
 
 def test_brave_search_exception_handling(brave_search_tools, mock_brave_client):
-    """Test that exceptions from Brave client are handled gracefully"""
-    mock_brave_client.search.side_effect = Exception("API Error")
+    mock_brave_client.web.side_effect = Exception("API Error")
 
     with pytest.raises(Exception, match="API Error"):
         brave_search_tools.brave_search("test query")
 
 
+def test_brave_search_api_error_json(brave_search_tools, mock_brave_client):
+    from brave_search_python_client.responses import BraveSearchAPIError
+
+    mock_brave_client.web.side_effect = BraveSearchAPIError("rate limited")
+
+    result = brave_search_tools.brave_search("test query")
+    assert json.loads(result) == {"error": "rate limited"}
+
+
+@pytest.mark.asyncio
+async def test_abrave_search_api_error_json(brave_search_tools, mock_brave_client):
+    from brave_search_python_client.responses import BraveSearchAPIError
+
+    mock_brave_client.web.side_effect = BraveSearchAPIError("rate limited")
+
+    result = await brave_search_tools.abrave_search("test query")
+    assert json.loads(result) == {"error": "rate limited"}
+
+
 @patch("agno.tools.bravesearch.log_info")
 def test_brave_search_logging(mock_log_info, brave_search_tools, mock_brave_client):
-    """Test that logging is called correctly"""
     mock_result = MagicMock()
     mock_result.web.results = []
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
     brave_search_tools.brave_search("test query")
 
     mock_log_info.assert_called_once_with("Searching Brave for: test query")
 
 
-def test_brave_search_result_filter_always_web(brave_search_tools, mock_brave_client):
-    """Test that result_filter is always set to 'web'"""
+def test_brave_search_result_filter_passed_through(brave_search_tools, mock_brave_client):
     mock_result = MagicMock()
     mock_result.web.results = []
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
-    brave_search_tools.brave_search("test query")
+    brave_search_tools.brave_search("test query", result_filter="web,summarizer")
 
-    # Verify result_filter is always 'web'
-    call_args = mock_brave_client.search.call_args
-    assert call_args[1]["result_filter"] == "web"
+    _args, _kwargs = mock_brave_client.web.call_args
+    assert _args[0].result_filter == "web,summarizer"
+
+
+def test_brave_search_invalid_country_returns_json_error(brave_search_tools, mock_brave_client):
+    result = brave_search_tools.brave_search("q", country="not-a-country")
+    data = json.loads(result)
+    assert "error" in data
+    assert "Invalid search parameters" in data["error"]
+    mock_brave_client.web.assert_not_called()
 
 
 def test_brave_search_url_conversion(brave_search_tools, mock_brave_client):
-    """Test that URL is converted to string using str()"""
     mock_web_result = MagicMock()
     mock_web_result.title = "Test Title"
-    mock_web_result.url = 12345  # Non-string URL
+    mock_web_result.url = 12345
     mock_web_result.description = "Test Description"
 
     mock_result = MagicMock()
     mock_result.web.results = [mock_web_result]
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
     result = brave_search_tools.brave_search("test query")
     result_dict = json.loads(result)
@@ -345,7 +399,6 @@ def test_brave_search_url_conversion(brave_search_tools, mock_brave_client):
 
 
 def test_json_serialization_integrity(brave_search_tools, mock_brave_client):
-    """Test that the returned JSON is valid and can be parsed"""
     mock_web_result = MagicMock()
     mock_web_result.title = "Test Title"
     mock_web_result.url = "https://test.com"
@@ -353,17 +406,14 @@ def test_json_serialization_integrity(brave_search_tools, mock_brave_client):
 
     mock_result = MagicMock()
     mock_result.web.results = [mock_web_result]
-    mock_brave_client.search.return_value = mock_result
+    mock_brave_client.web = AsyncMock(return_value=mock_result)
 
     result = brave_search_tools.brave_search("test query")
 
-    # Should not raise an exception
     parsed = json.loads(result)
 
-    # Verify structure
     assert "web_results" in parsed
     assert "query" in parsed
     assert "total_results" in parsed
 
-    # Verify it can be serialized again (round-trip test)
     json.dumps(parsed)
