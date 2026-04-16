@@ -49,6 +49,18 @@ class TestExecutorInit:
         executor = ScheduleExecutor(base_url="http://localhost:8000", internal_service_token="tok", poll_interval=10)
         assert executor.poll_interval == 10
 
+    def test_default_schedule_lock_renew_interval(self):
+        executor = ScheduleExecutor(base_url="http://localhost:8000", internal_service_token="tok")
+        assert executor.schedule_lock_renew_interval == 120
+
+    def test_custom_schedule_lock_renew_interval(self):
+        executor = ScheduleExecutor(
+            base_url="http://localhost:8000",
+            internal_service_token="tok",
+            schedule_lock_renew_interval=45,
+        )
+        assert executor.schedule_lock_renew_interval == 45
+
 
 class TestExecutorSimpleRequest:
     """Test _simple_request for non-run endpoints."""
@@ -112,6 +124,9 @@ class TestExecutorBackgroundRun:
             "agents",
             "a1",
             60,
+            None,
+            "sched-bg",
+            None,
         )
         assert result["status"] == "failed"
         assert result["status_code"] == 422
@@ -134,6 +149,9 @@ class TestExecutorBackgroundRun:
             "agents",
             "a1",
             60,
+            None,
+            "sched-bg",
+            None,
         )
         assert result["status"] == "failed"
         assert "Invalid JSON" in result["error"]
@@ -155,6 +173,9 @@ class TestExecutorBackgroundRun:
             "agents",
             "a1",
             60,
+            None,
+            "sched-bg",
+            None,
         )
         assert result["status"] == "failed"
         assert "Missing run_id" in result["error"]

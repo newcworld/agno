@@ -4588,6 +4588,23 @@ class SqliteDb(BaseDb):
             log_debug(f"Error releasing schedule: {e}")
             return False
 
+    def renew_schedule_lock(self, schedule_id: str, worker_id: str) -> bool:
+        try:
+            table = self._get_table(table_type="schedules")
+            if table is None:
+                return False
+            now = int(time.time())
+            with self.Session() as sess, sess.begin():
+                result = sess.execute(
+                    table.update()
+                    .where(table.c.id == schedule_id, table.c.locked_by == worker_id)
+                    .values(locked_at=now, updated_at=now)
+                )
+                return result.rowcount > 0
+        except Exception as e:
+            log_debug(f"Error renewing schedule lock: {e}")
+            return False
+
     def create_schedule_run(self, run_data: Dict[str, Any]) -> Dict[str, Any]:
         try:
             table = self._get_table(table_type="schedule_runs", create_table_if_not_found=True)

@@ -50,6 +50,7 @@ class ScheduleExecutor:
         internal_service_token: str,
         timeout: int = 3600,
         poll_interval: int = _DEFAULT_POLL_INTERVAL,
+        schedule_lock_renew_interval: int = 120,
     ) -> None:
         if httpx is None:
             raise ImportError("`httpx` not installed. Please install it using `pip install httpx`")
@@ -57,6 +58,10 @@ class ScheduleExecutor:
         self.internal_service_token = internal_service_token
         self.timeout = timeout
         self.poll_interval = poll_interval
+        #: Seconds between DB heartbeat updates to ``schedules.locked_at`` while
+        #: polling a background run. Set to ``0`` to disable. Should stay well
+        #: below ``claim_due_schedule(..., lock_grace_seconds=...)`` (default 300).
+        self.schedule_lock_renew_interval = schedule_lock_renew_interval
         self._client: Optional[httpx.AsyncClient] = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -77,6 +82,7 @@ class ScheduleExecutor:
         schedule: Union[Schedule, Dict[str, Any]],
         db: Any,
         release_schedule: bool = True,
+        worker_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute *schedule* and persist run records.
 
@@ -84,6 +90,8 @@ class ScheduleExecutor:
             schedule: Schedule object or dict (from DB).
             db: The DB adapter instance (must have scheduler methods).
             release_schedule: Whether to release the lock after execution.
+            worker_id: Scheduler worker id when this run holds a DB schedule lock;
+                enables periodic ``renew_schedule_lock`` heartbeats during long polls.
 
         Returns:
             The ScheduleRun dict.
@@ -109,6 +117,7 @@ class ScheduleExecutor:
             schedule_id = sched.id
             max_attempts = max(1, (sched.max_retries or 0) + 1)
             retry_delay = sched.retry_delay_seconds or 60
+            last_lock_renew = time.monotonic()
             for attempt in range(1, max_attempts + 1):
                 run_record_id = str(uuid4())
                 now = int(time.time())
@@ -136,7 +145,7 @@ class ScheduleExecutor:
                     db.create_schedule_run(run_dict)
 
                 try:
-                    result = await self._call_endpoint(sched)
+                    result = await self._call_endpoint(sched, db, worker_id)
                     last_status = result.get("status", "success")
                     last_status_code = result.get("status_code")
                     last_error = result.get("error")
@@ -182,6 +191,14 @@ class ScheduleExecutor:
 
                 if attempt < max_attempts:
                     log_info(f"Schedule {schedule_id}: retrying in {retry_delay}s (attempt {attempt}/{max_attempts})")
+                    last_lock_renew = await self._touch_schedule_lock_if_due(
+                        db, schedule_id, worker_id, last_lock_renew
+                    )
+                    # Heartbeats cannot run during ``asyncio.sleep``; a long retry_delay could
+                    # exceed ``claim_due_schedule`` lock grace (default 300s). Bump the DB lock
+                    # once before sleeping so the row stays fresh across the whole delay.
+                    await self._renew_schedule_lock_unconditional(db, schedule_id, worker_id)
+                    last_lock_renew = time.monotonic()
                     await asyncio.sleep(retry_delay)
 
             # Build final snapshot for the caller
@@ -246,8 +263,77 @@ class ScheduleExecutor:
                 except Exception as exc:
                     log_error(f"Failed to release schedule {schedule_id}: {exc}")
 
+    async def _touch_schedule_lock_if_due(
+        self,
+        db: Any,
+        schedule_id: Optional[str],
+        worker_id: Optional[str],
+        last_renew_mono: float,
+    ) -> float:
+        """Call ``db.renew_schedule_lock`` when the heartbeat interval has elapsed."""
+        if (
+            not schedule_id
+            or not worker_id
+            or self.schedule_lock_renew_interval <= 0
+        ):
+            return last_renew_mono
+        renew_fn = getattr(db, "renew_schedule_lock", None)
+        if renew_fn is None:
+            return last_renew_mono
+
+        now_m = time.monotonic()
+        if now_m - last_renew_mono < self.schedule_lock_renew_interval:
+            return last_renew_mono
+
+        try:
+            if asyncio.iscoroutinefunction(renew_fn):
+                ok = await renew_fn(schedule_id, worker_id)
+            else:
+                ok = renew_fn(schedule_id, worker_id)
+            if not ok:
+                log_warning(
+                    "Schedule lock renew had no effect "
+                    f"(schedule_id={schedule_id!r}, worker_id={worker_id!r})."
+                )
+                return last_renew_mono
+        except Exception as exc:
+            log_warning(f"Schedule lock renew failed (schedule_id={schedule_id!r}): {exc}")
+            return last_renew_mono
+        return time.monotonic()
+
+    async def _renew_schedule_lock_unconditional(
+        self,
+        db: Any,
+        schedule_id: Optional[str],
+        worker_id: Optional[str],
+    ) -> None:
+        """Best-effort ``renew_schedule_lock`` (ignores heartbeat interval).
+
+        Used before a blocking retry sleep so ``locked_at`` does not go stale while
+        the executor is idle.
+        """
+        if not schedule_id or not worker_id:
+            return
+        renew_fn = getattr(db, "renew_schedule_lock", None)
+        if renew_fn is None:
+            return
+        try:
+            if asyncio.iscoroutinefunction(renew_fn):
+                await renew_fn(schedule_id, worker_id)
+            else:
+                renew_fn(schedule_id, worker_id)
+        except Exception as exc:
+            log_warning(
+                f"Schedule lock renew before retry sleep failed (schedule_id={schedule_id!r}): {exc}"
+            )
+
     # ------------------------------------------------------------------
-    async def _call_endpoint(self, schedule: Schedule) -> Dict[str, Any]:
+    async def _call_endpoint(
+        self,
+        schedule: Schedule,
+        db: Any,
+        worker_id: Optional[str],
+    ) -> Dict[str, Any]:
         """Make the HTTP call to the schedule's endpoint."""
         method = (schedule.method or "POST").upper()
         endpoint = schedule.endpoint
@@ -280,6 +366,9 @@ class ScheduleExecutor:
                 resource_type,
                 resource_id,
                 timeout_seconds,
+                db,
+                schedule.id,
+                worker_id,
             )
         else:
             headers["Content-Type"] = "application/json"
@@ -322,6 +411,9 @@ class ScheduleExecutor:
         resource_type: str,
         resource_id: str,
         timeout_seconds: int,
+        db: Any,
+        schedule_id: str,
+        worker_id: Optional[str],
     ) -> Dict[str, Any]:
         """Submit a background run and poll until completion."""
         kwargs: Dict[str, Any] = {"headers": headers}
@@ -379,6 +471,9 @@ class ScheduleExecutor:
             run_id,
             session_id,
             timeout_seconds,
+            db,
+            schedule_id,
+            worker_id,
         )
 
     async def _poll_run(
@@ -390,10 +485,14 @@ class ScheduleExecutor:
         run_id: str,
         session_id: str,
         timeout_seconds: int,
+        db: Any = None,
+        schedule_id: Optional[str] = None,
+        worker_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Poll a run status endpoint until the run reaches a terminal state."""
         poll_url = f"{self.base_url}/{resource_type}/{resource_id}/runs/{run_id}"
         deadline = time.monotonic() + timeout_seconds
+        last_lock_renew = time.monotonic()
 
         while True:
             if time.monotonic() >= deadline:
@@ -407,6 +506,10 @@ class ScheduleExecutor:
                     "output": None,
                     "requirements": None,
                 }
+
+            last_lock_renew = await self._touch_schedule_lock_if_due(
+                db, schedule_id, worker_id, last_lock_renew
+            )
 
             try:
                 resp = await client.request(

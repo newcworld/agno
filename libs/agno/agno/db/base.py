@@ -1015,6 +1015,15 @@ class BaseDb(ABC):
         """Release a claimed schedule and optionally update next_run_at."""
         raise NotImplementedError
 
+    def renew_schedule_lock(self, schedule_id: str, worker_id: str) -> bool:
+        """Refresh ``locked_at`` for a schedule row held by *worker_id* (heartbeat).
+
+        Returns True if a row was updated. Used by the scheduler executor during
+        long-running background runs so locks do not become stale under
+        ``claim_due_schedule`` grace windows.
+        """
+        raise NotImplementedError
+
     # --- Schedule Runs (Optional) ---
 
     def create_schedule_run(self, run_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1729,6 +1738,13 @@ class AsyncBaseDb(ABC):
 
     async def release_schedule(self, schedule_id: str, next_run_at: Optional[int] = None) -> bool:
         """Release a claimed schedule and optionally update next_run_at."""
+        raise NotImplementedError
+
+    async def renew_schedule_lock(self, schedule_id: str, worker_id: str) -> bool:
+        """Refresh ``locked_at`` for a schedule row held by *worker_id* (heartbeat).
+
+        Async counterpart of :meth:`BaseDb.renew_schedule_lock`.
+        """
         raise NotImplementedError
 
     # --- Schedule Runs (Optional) ---

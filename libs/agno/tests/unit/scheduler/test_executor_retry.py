@@ -44,7 +44,7 @@ class TestRetrySucceedsOnSecondAttempt:
         """First attempt fails, second succeeds -- verify 2 create_schedule_run calls."""
         call_count = 0
 
-        async def mock_call_endpoint(sched):
+        async def mock_call_endpoint(sched, *_args, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -70,7 +70,7 @@ class TestRetryAllFail:
     async def test_all_retries_fail(self, mock_sleep, executor, mock_db, schedule):
         """All attempts fail -- verify final status is 'failed'."""
 
-        async def mock_call_endpoint(sched):
+        async def mock_call_endpoint(sched, *_args, **_kwargs):
             raise RuntimeError("Persistent failure")
 
         with patch.object(executor, "_call_endpoint", side_effect=mock_call_endpoint):
@@ -100,7 +100,7 @@ class TestNoRetries:
             "retry_delay_seconds": 0,
         }
 
-        async def mock_call_endpoint(sched):
+        async def mock_call_endpoint(sched, *_args, **_kwargs):
             raise RuntimeError("boom")
 
         with patch.object(executor, "_call_endpoint", side_effect=mock_call_endpoint):
@@ -136,7 +136,7 @@ class TestReleaseAlwaysCalled:
     async def test_release_on_failure(self, mock_sleep, executor, mock_db, schedule):
         """release_schedule is called even when all attempts fail."""
 
-        async def mock_call_endpoint(sched):
+        async def mock_call_endpoint(sched, *_args, **_kwargs):
             raise RuntimeError("fail")
 
         with patch.object(executor, "_call_endpoint", side_effect=mock_call_endpoint):

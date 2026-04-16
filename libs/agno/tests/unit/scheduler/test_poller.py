@@ -131,6 +131,7 @@ class TestPollerPollOnce:
         call_args = mock_executor.execute.call_args
         assert isinstance(call_args[0][0], Schedule)
         assert call_args[0][0].id == "s1"
+        assert call_args[1]["worker_id"] == poller.worker_id
 
     @pytest.mark.asyncio
     async def test_respects_concurrency_limit(self, mock_db, mock_executor):
@@ -190,6 +191,7 @@ class TestPollerPollOnce:
         call_args = mock_executor.execute.call_args
         assert isinstance(call_args[0][0], Schedule)
         assert call_args[0][0].id == "s1"
+        assert call_args[1]["worker_id"] == poller.worker_id
 
 
 class TestPollerTrigger:

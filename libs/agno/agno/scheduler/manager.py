@@ -18,6 +18,7 @@ SchedulerDbMethod = Literal[
     "update_schedule",
     "delete_schedule",
     "release_schedule",
+    "renew_schedule_lock",
     "claim_due_schedule",
     "create_schedule_run",
     "update_schedule_run",

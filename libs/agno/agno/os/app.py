@@ -188,6 +188,7 @@ async def scheduler_lifespan(app: FastAPI, agent_os: "AgentOS"):
     executor = ScheduleExecutor(
         base_url=base_url,
         internal_service_token=internal_token,
+        schedule_lock_renew_interval=agent_os._scheduler_lock_renew_interval,
     )
     poller = SchedulePoller(
         db=agent_os.db,
@@ -281,6 +282,7 @@ class AgentOS:
         registry: Optional[Registry] = None,
         scheduler: bool = False,
         scheduler_poll_interval: int = 15,
+        scheduler_lock_renew_interval: int = 120,
         scheduler_base_url: Optional[str] = None,
         internal_service_token: Optional[str] = None,
     ):
@@ -314,6 +316,8 @@ class AgentOS:
             registry: Optional registry to use for the AgentOS
             scheduler: Whether to enable the cron scheduler
             scheduler_poll_interval: Seconds between scheduler poll cycles (default: 15)
+            scheduler_lock_renew_interval: Seconds between DB ``locked_at`` heartbeats while a
+                scheduled background run is in progress (default: 120). Set to ``0`` to disable.
             scheduler_base_url: Base URL for scheduler HTTP calls (default: http://127.0.0.1:7777)
             internal_service_token: Token for scheduler-to-OS auth (auto-generated if not provided)
 
@@ -374,6 +378,7 @@ class AgentOS:
         # Scheduler configuration
         self._scheduler_enabled = scheduler
         self._scheduler_poll_interval = scheduler_poll_interval
+        self._scheduler_lock_renew_interval = scheduler_lock_renew_interval
         self._scheduler_base_url = scheduler_base_url
         if self._scheduler_enabled and not internal_service_token:
             import secrets

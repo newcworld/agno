@@ -237,6 +237,36 @@ class TestClaimAndRelease:
         assert refreshed["locked_at"] is None
         assert refreshed["next_run_at"] == next_run
 
+    def test_renew_schedule_lock(self, db):
+        now = int(time.time())
+        sched = _make_schedule(next_run_at=now - 10, enabled=True)
+        db.create_schedule(sched)
+
+        claimed = db.claim_due_schedule("worker-1")
+        assert claimed is not None
+        old_locked_at = claimed["locked_at"]
+
+        time.sleep(1)
+        renewed = db.renew_schedule_lock(sched["id"], "worker-1")
+        assert renewed is True
+
+        refreshed = db.get_schedule(sched["id"])
+        assert refreshed["locked_by"] == "worker-1"
+        assert refreshed["locked_at"] is not None
+        assert refreshed["locked_at"] > old_locked_at
+
+    def test_renew_schedule_lock_wrong_worker(self, db):
+        now = int(time.time())
+        sched = _make_schedule(
+            next_run_at=now - 10,
+            enabled=True,
+            locked_by="worker-a",
+            locked_at=now,
+        )
+        db.create_schedule(sched)
+
+        assert db.renew_schedule_lock(sched["id"], "worker-b") is False
+
 
 # =============================================================================
 # Schedule runs

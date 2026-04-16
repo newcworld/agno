@@ -120,7 +120,7 @@ class SchedulePoller:
     async def _execute_safe(self, schedule: Union[Schedule, Dict[str, Any]]) -> None:
         """Execute a schedule, catching all errors."""
         try:
-            await self.executor.execute(schedule, self.db)
+            await self.executor.execute(schedule, self.db, worker_id=self.worker_id)
         except Exception as exc:
             sched_id = schedule.id if isinstance(schedule, Schedule) else schedule.get("id")
             log_error(f"Error executing schedule {sched_id}: {exc}")
