@@ -12,6 +12,7 @@ from agno.knowledge.document.base import Document
 # Helpers: mock MarkItDown before importing the reader module
 # ---------------------------------------------------------------------------
 
+
 def _make_mock_result(text: str = "# Converted\n\nSome markdown content."):
     """Build a mock MarkItDown conversion result."""
     result = Mock()
@@ -274,10 +275,12 @@ def test_chunking_enabled():
     reader = _get_reader()
     reader._md = _make_mock_markitdown("chunk me")
     reader.chunk = True
-    reader.chunk_document = Mock(return_value=[
-        Document(name="doc", id="1", content="Chunk 1"),
-        Document(name="doc", id="2", content="Chunk 2"),
-    ])
+    reader.chunk_document = Mock(
+        return_value=[
+            Document(name="doc", id="1", content="Chunk 1"),
+            Document(name="doc", id="2", content="Chunk 2"),
+        ]
+    )
 
     documents = reader.read(bio, name="doc.html")
 
@@ -467,7 +470,11 @@ def test_build_markitdown_with_api_key(monkeypatch):
 
     # Restore the real _build_markitdown
     monkeypatch.setattr(mod, "MarkItDown", mock_md_cls)
-    monkeypatch.setattr(mod, "_build_markitdown", mod._build_markitdown.__wrapped__ if hasattr(mod._build_markitdown, "__wrapped__") else mod._build_markitdown)
+    monkeypatch.setattr(
+        mod,
+        "_build_markitdown",
+        mod._build_markitdown.__wrapped__ if hasattr(mod._build_markitdown, "__wrapped__") else mod._build_markitdown,
+    )
 
     with patch.dict("sys.modules", {"openai": Mock(OpenAI=mock_openai_cls)}):
         result = mod._build_markitdown()

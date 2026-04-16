@@ -292,7 +292,9 @@ class AgentSessionDetailSchema(BaseModel):
     metrics: Optional[dict] = Field(None, description="Session metrics")
     metadata: Optional[dict] = Field(None, description="Additional metadata")
     chat_history: Optional[List[dict]] = Field(None, description="Complete chat history")
-    active_runs: Optional[List[ActiveRunInfo]] = Field(None, description="Runs with non-terminal status that can be resumed via /resume")
+    active_runs: Optional[List[ActiveRunInfo]] = Field(
+        None, description="Runs with non-terminal status that can be resumed via /resume"
+    )
     created_at: Optional[datetime] = Field(None, description="Session creation timestamp")
     updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
 
@@ -307,9 +309,7 @@ class AgentSessionDetailSchema(BaseModel):
         for run in session.runs or []:
             if hasattr(run, "status") and run.status in _active_statuses and run.run_id:
                 status_value = run.status.value if isinstance(run.status, RunStatus) else str(run.status)
-                active_runs.append(
-                    ActiveRunInfo(run_id=run.run_id, status=status_value, created_at=run.created_at)
-                )
+                active_runs.append(ActiveRunInfo(run_id=run.run_id, status=status_value, created_at=run.created_at))
 
         return cls(
             user_id=session.user_id,
@@ -343,7 +343,9 @@ class TeamSessionDetailSchema(BaseModel):
     team_data: Optional[dict] = Field(None, description="Team-specific data")
     metadata: Optional[dict] = Field(None, description="Additional metadata")
     chat_history: Optional[List[dict]] = Field(None, description="Complete chat history")
-    active_runs: Optional[List[ActiveRunInfo]] = Field(None, description="Runs with non-terminal status that can be resumed via /resume")
+    active_runs: Optional[List[ActiveRunInfo]] = Field(
+        None, description="Runs with non-terminal status that can be resumed via /resume"
+    )
     created_at: Optional[datetime] = Field(None, description="Session creation timestamp")
     updated_at: Optional[datetime] = Field(None, description="Last update timestamp")
     total_tokens: Optional[int] = Field(None, description="Total tokens used in this session")
@@ -360,9 +362,7 @@ class TeamSessionDetailSchema(BaseModel):
         for run in session.runs or []:
             if hasattr(run, "status") and run.status in _active_statuses and run.run_id:
                 status_value = run.status.value if isinstance(run.status, RunStatus) else str(run.status)
-                active_runs.append(
-                    ActiveRunInfo(run_id=run.run_id, status=status_value, created_at=run.created_at)
-                )
+                active_runs.append(ActiveRunInfo(run_id=run.run_id, status=status_value, created_at=run.created_at))
 
         return cls(
             session_id=session.session_id,

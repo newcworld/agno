@@ -45,7 +45,9 @@ class ContentResponseSchema(BaseModel):
     status_message: Optional[str] = Field(None, description="Status message or error details")
     created_at: Optional[datetime] = Field(None, description="Timestamp when content was created")
     updated_at: Optional[datetime] = Field(None, description="Timestamp when content was last updated")
-    documents: Optional[List[DocumentChunkSchema]] = Field(None, description="Extracted document chunks (only in detail endpoint)")
+    documents: Optional[List[DocumentChunkSchema]] = Field(
+        None, description="Extracted document chunks (only in detail endpoint)"
+    )
 
     @classmethod
     def from_dict(cls, content: Dict[str, Any]) -> "ContentResponseSchema":

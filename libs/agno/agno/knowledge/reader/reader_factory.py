@@ -399,18 +399,35 @@ class ReaderFactory:
     # Extensions handled by markitdown (images, HTML, audio, etc.)
     _MARKITDOWN_EXTENSIONS = {
         # Images
-        ".png", ".jpeg", ".jpg", ".tiff", ".tif", ".bmp", ".webp",
+        ".png",
+        ".jpeg",
+        ".jpg",
+        ".tiff",
+        ".tif",
+        ".bmp",
+        ".webp",
         # HTML
-        ".html", ".htm", ".xhtml",
+        ".html",
+        ".htm",
+        ".xhtml",
         # Audio (markitdown supports wav/mp3 transcription)
-        ".wav", ".mp3",
+        ".wav",
+        ".mp3",
     }
 
     # MIME types that map to markitdown
     _MARKITDOWN_MIME_TYPES = {
-        "image/png", "image/jpeg", "image/jpg", "image/tiff", "image/bmp", "image/webp",
-        "text/html", "application/xhtml+xml",
-        "audio/wav", "audio/mpeg", "audio/mp3",
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/tiff",
+        "image/bmp",
+        "image/webp",
+        "text/html",
+        "application/xhtml+xml",
+        "audio/wav",
+        "audio/mpeg",
+        "audio/mp3",
     }
 
     @classmethod

@@ -96,7 +96,9 @@ class RunProgressSummaryManager:
         """)
 
         if previous_summary:
-            system_prompt += f"\n<previous_progress_summary>\n{previous_summary.get('summary', '')}\n</previous_progress_summary>\n"
+            system_prompt += (
+                f"\n<previous_progress_summary>\n{previous_summary.get('summary', '')}\n</previous_progress_summary>\n"
+            )
             system_prompt += "Update the summary with any new progress since the previous snapshot.\n"
 
         conversation_lines: list[str] = []

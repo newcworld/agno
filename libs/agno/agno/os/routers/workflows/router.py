@@ -428,7 +428,9 @@ async def _resume_stream_generator(
                 meta: dict = {
                     "event": "replay",
                     "run_id": run_id,
-                    "status": run_output.status.value if run_output.status and hasattr(run_output.status, "value") else (run_output.status or "unknown"),
+                    "status": run_output.status.value
+                    if run_output.status and hasattr(run_output.status, "value")
+                    else (run_output.status or "unknown"),
                     "total_events": len(events_to_replay),
                     "message": f"Run completed. Replaying {len(events_to_replay)} events from database.",
                 }
@@ -446,7 +448,9 @@ async def _resume_stream_generator(
                 meta = {
                     "event": "replay",
                     "run_id": run_id,
-                    "status": run_output.status.value if run_output.status and hasattr(run_output.status, "value") else (run_output.status or "unknown"),
+                    "status": run_output.status.value
+                    if run_output.status and hasattr(run_output.status, "value")
+                    else (run_output.status or "unknown"),
                     "total_events": 0,
                     "message": "Run completed but no events stored.",
                 }

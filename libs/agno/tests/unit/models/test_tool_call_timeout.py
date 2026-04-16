@@ -141,8 +141,14 @@ class TestSyncToolCallTimeout:
         from agno.models.response import ModelResponse, ModelResponseEvent
 
         events = list(model.run_function_call(function_call=fc, function_call_results=[]))
-        started_events = [e for e in events if isinstance(e, ModelResponse) and e.event == ModelResponseEvent.tool_call_started.value]
-        completed_events = [e for e in events if isinstance(e, ModelResponse) and e.event == ModelResponseEvent.tool_call_completed.value]
+        started_events = [
+            e for e in events if isinstance(e, ModelResponse) and e.event == ModelResponseEvent.tool_call_started.value
+        ]
+        completed_events = [
+            e
+            for e in events
+            if isinstance(e, ModelResponse) and e.event == ModelResponseEvent.tool_call_completed.value
+        ]
 
         assert len(started_events) == 1
         assert len(completed_events) == 1

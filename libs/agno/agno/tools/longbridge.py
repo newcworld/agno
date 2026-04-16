@@ -33,23 +33,64 @@ except ImportError:
 # ── Literal type aliases ────────────────────────────────────────
 
 PeriodType = Literal[
-    "1m", "2m", "3m", "5m", "10m", "15m", "20m", "30m", "45m", "60m",
-    "1h", "2h", "3h", "4h", "1d", "day", "1w", "week", "1M", "month",
-    "quarter", "year",
+    "1m",
+    "2m",
+    "3m",
+    "5m",
+    "10m",
+    "15m",
+    "20m",
+    "30m",
+    "45m",
+    "60m",
+    "1h",
+    "2h",
+    "3h",
+    "4h",
+    "1d",
+    "day",
+    "1w",
+    "week",
+    "1M",
+    "month",
+    "quarter",
+    "year",
 ]
 MarketType = Literal["HK", "US", "CN", "SG"]
 AdjustTypeStr = Literal["none", "forward"]
 OrderSideStr = Literal["Buy", "Sell"]
 OrderTypeStr = Literal[
-    "LO", "ELO", "MO", "AO", "ALO", "ODD", "LIT", "MIT",
-    "TSLPAMT", "TSLPPCT", "TSMAMT", "TSMPCT", "SLO",
+    "LO",
+    "ELO",
+    "MO",
+    "AO",
+    "ALO",
+    "ODD",
+    "LIT",
+    "MIT",
+    "TSLPAMT",
+    "TSLPPCT",
+    "TSMAMT",
+    "TSMPCT",
+    "SLO",
 ]
 TimeInForceStr = Literal["Day", "GoodTilCanceled", "GoodTilDate"]
 OutsideRTHStr = Literal["RTHOnly", "AnyTime", "Overnight"]
 OrderStatusStr = Literal[
-    "NotReported", "New", "WaitToNew", "PartialFilled", "Filled",
-    "WaitToReplace", "PendingReplace", "Replaced", "WaitToCancel",
-    "PendingCancel", "Rejected", "Canceled", "Expired", "PartialWithdrawal",
+    "NotReported",
+    "New",
+    "WaitToNew",
+    "PartialFilled",
+    "Filled",
+    "WaitToReplace",
+    "PendingReplace",
+    "Replaced",
+    "WaitToCancel",
+    "PendingCancel",
+    "Rejected",
+    "Canceled",
+    "Expired",
+    "PartialWithdrawal",
 ]
 WarrantSortByStr = Literal["LastDone", "ChangeRate", "Volume", "Price", "Premium", "Leverage"]
 SortOrderStr = Literal["Ascending", "Descending"]
@@ -592,8 +633,11 @@ class LongbridgeTools(Toolkit):
         try:
             log_debug(f"Fetching history candlesticks for {symbol} from {start} to {end}")
             resp = self.quote_ctx.history_candlesticks_by_date(
-                symbol, PERIOD_MAP[period], ADJUST_MAP[adjust],
-                start=date.fromisoformat(start), end=date.fromisoformat(end),
+                symbol,
+                PERIOD_MAP[period],
+                ADJUST_MAP[adjust],
+                start=date.fromisoformat(start),
+                end=date.fromisoformat(end),
             )
             return _to_json(resp)
         except OpenApiException as e:
@@ -791,9 +835,7 @@ class LongbridgeTools(Toolkit):
         """
         try:
             log_debug(f"Fetching trading days for {market}")
-            resp = self.quote_ctx.trading_days(
-                MARKET_MAP[market], date.fromisoformat(start), date.fromisoformat(end)
-            )
+            resp = self.quote_ctx.trading_days(MARKET_MAP[market], date.fromisoformat(start), date.fromisoformat(end))
             return _to_json(resp)
         except OpenApiException as e:
             return f"Error fetching trading days: code={e.code}, message={e.message}"
@@ -1070,7 +1112,9 @@ class LongbridgeTools(Toolkit):
         try:
             parsed_status = None
             if status:
-                parsed_status = [ORDER_STATUS_MAP[s.strip()] for s in status.split(",") if s.strip() in ORDER_STATUS_MAP]
+                parsed_status = [
+                    ORDER_STATUS_MAP[s.strip()] for s in status.split(",") if s.strip() in ORDER_STATUS_MAP
+                ]
 
             log_debug("Fetching today's orders")
             resp = self.trade_ctx.today_orders(
@@ -1104,7 +1148,9 @@ class LongbridgeTools(Toolkit):
         try:
             parsed_status = None
             if status:
-                parsed_status = [ORDER_STATUS_MAP[s.strip()] for s in status.split(",") if s.strip() in ORDER_STATUS_MAP]
+                parsed_status = [
+                    ORDER_STATUS_MAP[s.strip()] for s in status.split(",") if s.strip() in ORDER_STATUS_MAP
+                ]
 
             log_debug("Fetching history orders")
             resp = self.trade_ctx.history_orders(

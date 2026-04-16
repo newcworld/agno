@@ -769,4 +769,3 @@ class CodingTools(Toolkit):
         except Exception as e:
             log_error(f"Error listing directory: {str(e)}")
             return f"Error listing directory: {e}"
-

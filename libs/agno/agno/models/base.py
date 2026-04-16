@@ -2137,16 +2137,12 @@ class Model(ABC):
                     function_execution_result = future.result(timeout=self.tool_call_timeout)
                 except concurrent.futures.TimeoutError:
                     future.cancel()
-                    log_warning(
-                        f"Tool call {function_call.function.name} timed out after {self.tool_call_timeout}s"
-                    )
+                    log_warning(f"Tool call {function_call.function.name} timed out after {self.tool_call_timeout}s")
                     function_call.error = (
                         f"Tool call timed out after {self.tool_call_timeout} seconds. "
                         "Try a different approach or skip this tool."
                     )
-                    function_execution_result = FunctionExecutionResult(
-                        status="failure", error=function_call.error
-                    )
+                    function_execution_result = FunctionExecutionResult(status="failure", error=function_call.error)
                 finally:
                     executor.shutdown(wait=False)
             else:
@@ -2481,9 +2477,7 @@ class Model(ABC):
                 try:
                     result = await asyncio.wait_for(coro, timeout=self.tool_call_timeout)
                 except asyncio.TimeoutError:
-                    log_warning(
-                        f"Tool call {function_call.function.name} timed out after {self.tool_call_timeout}s"
-                    )
+                    log_warning(f"Tool call {function_call.function.name} timed out after {self.tool_call_timeout}s")
                     function_call.error = (
                         f"Tool call timed out after {self.tool_call_timeout} seconds. "
                         "Try a different approach or skip this tool."
