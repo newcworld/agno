@@ -33,6 +33,10 @@ class BraveSearchTools(Toolkit):
         fixed_language (Optional[str]): A fixed language for the search results.
     """
 
+    brave_client: BraveSearch
+    fixed_max_results: Optional[int]
+    fixed_language: Optional[str]
+
     def __init__(
         self,
         api_key: Optional[str] = None,
