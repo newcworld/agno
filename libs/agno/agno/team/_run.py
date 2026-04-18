@@ -3304,7 +3304,7 @@ async def _arun_background_stream(
         from agno.os.utils import format_sse_event_with_index
 
         _last_save_ts: float = _time()
-        _SAVE_INTERVAL = 10.0
+        _SAVE_INTERVAL = 60.0
 
         try:
             async for event in _arun_stream(
