@@ -794,12 +794,6 @@ async def _resume_stream_generator(
     """
     from agno.os.managers import sse_subscriber_manager
 
-    buffered_user_id = event_buffer.get_run_user_id(run_id)
-    if user_id and buffered_user_id and buffered_user_id != user_id:
-        error = {"event": "error", "error": "Access denied: run belongs to a different user"}
-        yield f"event: error\ndata: {json.dumps(error)}\n\n"
-        return
-
     buffer_status = event_buffer.get_run_status(run_id)
 
     if buffer_status is None:
@@ -812,20 +806,16 @@ async def _resume_stream_generator(
                 yield f"event: error\ndata: {json.dumps(error)}\n\n"
                 return
             if run_output and run_output.events:
-                skip = (last_event_index + 1) if last_event_index is not None else 0
-                events_to_replay = run_output.events[skip:]
                 meta: dict = {
                     "event": "replay",
                     "run_id": run_id,
-                    "status": run_output.status.value
-                    if run_output.status and hasattr(run_output.status, "value")
-                    else (run_output.status or "unknown"),
-                    "total_events": len(events_to_replay),
-                    "message": f"Run completed. Replaying {len(events_to_replay)} events from database.",
+                    "status": run_output.status.value if run_output.status else "unknown",
+                    "total_events": len(run_output.events),
+                    "message": "Run completed. Replaying all events from database.",
                 }
                 yield f"event: replay\ndata: {json.dumps(meta)}\n\n"
 
-                for idx, event in enumerate(events_to_replay, start=skip):
+                for idx, event in enumerate(run_output.events):
                     event_dict = event.to_dict()
                     event_dict["event_index"] = idx
                     if "run_id" not in event_dict:
@@ -837,9 +827,7 @@ async def _resume_stream_generator(
                 meta = {
                     "event": "replay",
                     "run_id": run_id,
-                    "status": run_output.status.value
-                    if run_output.status and hasattr(run_output.status, "value")
-                    else (run_output.status or "unknown"),
+                    "status": run_output.status.value if run_output.status else "unknown",
                     "total_events": 0,
                     "message": "Run completed but no events stored.",
                 }
@@ -882,12 +870,7 @@ async def _resume_stream_generator(
         return
 
     # PATH 1: Run still active -- subscribe FIRST (to avoid race condition), then replay missed events
-    try:
-        queue = sse_subscriber_manager.subscribe(run_id)
-    except ValueError:
-        error = {"event": "error", "error": "Too many concurrent subscribers for this run"}
-        yield f"event: error\ndata: {json.dumps(error)}\n\n"
-        return
+    queue = sse_subscriber_manager.subscribe(run_id)
 
     try:
         missed_events = event_buffer.get_events(run_id, last_event_index)

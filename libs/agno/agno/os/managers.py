@@ -216,16 +216,11 @@ class EventsBuffer:
         # Store all event types (WorkflowRunOutputEvent, RunOutputEvent, TeamRunOutputEvent)
         self.events: Dict[str, List[Union[WorkflowRunOutputEvent, RunOutputEvent, TeamRunOutputEvent]]] = {}
         self._next_index: Dict[str, int] = {}  # monotonic event index counter per run
-        self.run_metadata: Dict[str, Dict[str, Any]] = {}  # {run_id: {status, last_updated, user_id, etc}}
+        self.run_metadata: Dict[str, Dict[str, Any]] = {}  # {run_id: {status, last_updated, etc}}
         self.max_events_per_run = max_events_per_run
         self.cleanup_interval = cleanup_interval
 
-    def add_event(
-        self,
-        run_id: str,
-        event: Union[WorkflowRunOutputEvent, RunOutputEvent, TeamRunOutputEvent],
-        user_id: Optional[str] = None,
-    ) -> int:
+    def add_event(self, run_id: str, event: Union[WorkflowRunOutputEvent, RunOutputEvent, TeamRunOutputEvent]) -> int:
         """Add event to buffer for a specific run and return the event index (handles workflow, agent, and team events)"""
         current_time = time()
 
@@ -236,13 +231,10 @@ class EventsBuffer:
                 "status": RunStatus.running,
                 "created_at": current_time,
                 "last_updated": current_time,
-                "user_id": user_id,
             }
 
         self.events[run_id].append(event)
         self.run_metadata[run_id]["last_updated"] = current_time
-        if user_id and not self.run_metadata[run_id].get("user_id"):
-            self.run_metadata[run_id]["user_id"] = user_id
 
         # Monotonic counter — to survive buffer trims
         event_index = self._next_index[run_id]
@@ -323,9 +315,11 @@ class EventsBuffer:
 
     def cleanup_run(self, run_id: str) -> None:
         """Remove buffer for a completed run (called after retention period)"""
-        self.events.pop(run_id, None)
-        self.run_metadata.pop(run_id, None)
+        if run_id in self.events:
+            del self.events[run_id]
         self._next_index.pop(run_id, None)
+        if run_id in self.run_metadata:
+            del self.run_metadata[run_id]
         log_debug(f"Cleaned up event buffer for run {run_id}")
 
     def cleanup_runs(self) -> None:
@@ -351,11 +345,6 @@ class EventsBuffer:
         metadata = self.run_metadata.get(run_id)
         return metadata["status"] if metadata else None
 
-    def get_run_user_id(self, run_id: str) -> Optional[str]:
-        """Get the user_id that owns this run (for access control)"""
-        metadata = self.run_metadata.get(run_id)
-        return metadata.get("user_id") if metadata else None
-
 
 class SSESubscriberManager:
     """
@@ -366,19 +355,13 @@ class SSESubscriberManager:
     registered queues. A None sentinel signals run completion.
     """
 
-    def __init__(self, max_subscribers_per_run: int = 10) -> None:
+    def __init__(self) -> None:
         self._subscribers: Dict[str, List[asyncio.Queue[Optional[tuple[int, str]]]]] = {}
-        self.max_subscribers_per_run = max_subscribers_per_run
 
     def subscribe(self, run_id: str) -> "asyncio.Queue[Optional[tuple[int, str]]]":
-        """Register a new subscriber queue for a run. Returns the queue.
-
-        Raises ValueError if max_subscribers_per_run is exceeded.
-        """
+        """Register a new subscriber queue for a run. Returns the queue."""
         if run_id not in self._subscribers:
             self._subscribers[run_id] = []
-        if len(self._subscribers[run_id]) >= self.max_subscribers_per_run:
-            raise ValueError(f"Maximum subscribers ({self.max_subscribers_per_run}) exceeded for run {run_id}")
         queue: asyncio.Queue[Optional[tuple[int, str]]] = asyncio.Queue()
         self._subscribers[run_id].append(queue)
         log_debug(f"SSE subscriber registered for run {run_id}")

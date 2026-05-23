@@ -3339,19 +3339,23 @@ async def _arun_background_stream(
                 if isinstance(event, TeamRunOutput):
                     continue
 
+                # Buffer event for reconnection support
                 event_index: Optional[int] = None
                 try:
-                    event_index = event_buffer.add_event(run_id, event, user_id=user_id)
+                    event_index = event_buffer.add_event(run_id, event)
                 except Exception:
                     log_warning(f"Failed to buffer event for run {run_id}")
 
+                # Format as SSE
                 sse_data = format_sse_event_with_index(event, event_index=event_index, run_id=run_id)
 
+                # Push to primary queue (original client)
                 try:
-                    await asyncio.wait_for(sse_queue.put(sse_data), timeout=5.0)
-                except (asyncio.TimeoutError, Exception):
-                    pass
+                    await sse_queue.put(sse_data)
+                except Exception:
+                    log_warning(f"Failed to push SSE data to queue for run {run_id}")
 
+                # Publish to SSE subscribers (resumed clients)
                 try:
                     await sse_subscriber_manager.publish(
                         run_id, event_index if event_index is not None else -1, sse_data
@@ -3413,15 +3417,12 @@ async def _arun_background_stream(
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
-    # 4. Yield SSE strings from the queue (CancelledError is expected on client disconnect)
-    try:
-        while True:
-            sse_data = await sse_queue.get()
-            if sse_data is None:
-                break
-            yield sse_data
-    except (asyncio.CancelledError, GeneratorExit):
-        log_debug(f"Client disconnected from background stream run {run_id} (expected for resumable SSE)")
+    # 4. Yield SSE strings from the queue
+    while True:
+        sse_data = await sse_queue.get()
+        if sse_data is None:
+            break
+        yield sse_data
 
 
 async def _arun_stream(

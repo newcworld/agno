@@ -4037,7 +4037,9 @@ class Workflow:
 
             # _handle_event (called inside _aexecute_stream) already adds events to
             # event_buffer.  We must NOT add them again here to avoid duplication.
-            # Instead, we read the monotonic index that _handle_event just assigned.
+            # Instead, we read the current buffer count to derive the event_index
+            # that _handle_event just assigned.
+
             try:
                 if self.agent is not None:
                     result = self._aexecute_workflow_agent(
@@ -4051,15 +4053,19 @@ class Workflow:
                         if isinstance(event, WfRunOutput):
                             continue
 
+                        # Get the monotonic index that _handle_event already assigned
                         event_index = event_buffer.get_last_index(run_id)
 
+                        # Format as SSE
                         sse_data = format_sse_event_with_index(event, event_index=event_index, run_id=run_id)
 
+                        # Push to primary queue (original client)
                         try:
-                            await asyncio.wait_for(sse_queue.put(sse_data), timeout=5.0)
-                        except (asyncio.TimeoutError, Exception):
-                            pass
+                            await sse_queue.put(sse_data)
+                        except Exception:
+                            log_warning(f"Failed to push SSE data to queue for workflow run {run_id}")
 
+                        # Publish to SSE subscribers (resumed clients)
                         try:
                             await sse_subscriber_manager.publish(
                                 run_id, event_index if event_index is not None else -1, sse_data
@@ -4080,15 +4086,19 @@ class Workflow:
                         if isinstance(event, WfRunOutput):
                             continue
 
+                        # Get the monotonic index that _handle_event already assigned
                         event_index = event_buffer.get_last_index(run_id)
 
+                        # Format as SSE
                         sse_data = format_sse_event_with_index(event, event_index=event_index, run_id=run_id)
 
+                        # Push to primary queue (original client)
                         try:
-                            await asyncio.wait_for(sse_queue.put(sse_data), timeout=5.0)
-                        except (asyncio.TimeoutError, Exception):
-                            pass
+                            await sse_queue.put(sse_data)
+                        except Exception:
+                            log_warning(f"Failed to push SSE data to queue for workflow run {run_id}")
 
+                        # Publish to SSE subscribers (resumed clients)
                         try:
                             await sse_subscriber_manager.publish(
                                 run_id, event_index if event_index is not None else -1, sse_data
@@ -4126,11 +4136,13 @@ class Workflow:
                 except Exception:
                     log_warning(f"Failed to signal primary queue for workflow run {run_id} completion")
 
+                # Mark run completed in event buffer
                 try:
                     event_buffer.set_run_completed(run_id, workflow_run_response.status or RunStatus.completed)
                 except Exception:
                     log_warning(f"Failed to mark workflow run {run_id} as completed in event buffer")
 
+                # Signal SSE subscribers that run is done (shielded to survive task cancellation)
                 try:
                     await asyncio.shield(sse_subscriber_manager.complete(run_id))
                 except (Exception, asyncio.CancelledError):
@@ -4140,15 +4152,12 @@ class Workflow:
         _workflow_background_tasks.add(task)
         task.add_done_callback(_workflow_background_tasks.discard)
 
-        # Yield SSE strings from the queue (CancelledError is expected on client disconnect)
-        try:
-            while True:
-                sse_data = await sse_queue.get()
-                if sse_data is None:
-                    break
-                yield sse_data
-        except (asyncio.CancelledError, GeneratorExit):
-            log_debug(f"Client disconnected from background stream workflow run {run_id} (expected for resumable SSE)")
+        # Yield SSE strings from the queue
+        while True:
+            sse_data = await sse_queue.get()
+            if sse_data is None:
+                break
+            yield sse_data
 
     async def aget_run(self, run_id: str, session_id: Optional[str] = None) -> Optional[WorkflowRunOutput]:
         """Get the status and details of a background workflow run - SIMPLIFIED"""
