@@ -14,7 +14,7 @@ import asyncio
 import json
 from dataclasses import dataclass
 from time import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from starlette.websockets import WebSocket
 
@@ -215,8 +215,8 @@ class EventsBuffer:
         """
         # Store all event types (WorkflowRunOutputEvent, RunOutputEvent, TeamRunOutputEvent)
         self.events: Dict[str, List[Union[WorkflowRunOutputEvent, RunOutputEvent, TeamRunOutputEvent]]] = {}
+        self._next_index: Dict[str, int] = {}  # monotonic event index counter per run
         self.run_metadata: Dict[str, Dict[str, Any]] = {}  # {run_id: {status, last_updated, user_id, etc}}
-        self._next_index: Dict[str, int] = {}
         self.max_events_per_run = max_events_per_run
         self.cleanup_interval = cleanup_interval
 
@@ -244,6 +244,7 @@ class EventsBuffer:
         if user_id and not self.run_metadata[run_id].get("user_id"):
             self.run_metadata[run_id]["user_id"] = user_id
 
+        # Monotonic counter — to survive buffer trims
         event_index = self._next_index[run_id]
         self._next_index[run_id] += 1
 
@@ -256,38 +257,59 @@ class EventsBuffer:
 
     def get_events(
         self, run_id: str, last_event_index: Optional[int] = None
-    ) -> List[Union[WorkflowRunOutputEvent, RunOutputEvent, TeamRunOutputEvent]]:
+    ) -> List[Tuple[int, Union[WorkflowRunOutputEvent, RunOutputEvent, TeamRunOutputEvent]]]:
         """
         Get events since the last received event index.
 
         Args:
             run_id: The run ID (agent/team/workflow)
-            last_event_index: Index of last event received by client (0-based, monotonic)
+            last_event_index: Monotonic index of last event received by client (0-based)
 
         Returns:
-            List of events since last_event_index, or all events if None
+            List of (monotonic_index, event) tuples since last_event_index, or all if None
         """
         events = self.events.get(run_id, [])
         if not events:
             return []
 
-        if last_event_index is None:
-            return events
-
+        # The buffer may have been trimmed, so list positions don't match event indices.
+        # first_index is the monotonic index of the oldest event still in the buffer.
         next_idx = self._next_index.get(run_id, len(events))
-        # first_index_in_buffer: the monotonic index of events[0]
-        first_index_in_buffer = next_idx - len(events)
-        # translate monotonic event_index to list offset
-        offset = last_event_index + 1 - first_index_in_buffer
-        if offset <= 0:
-            return events
-        if offset >= len(events):
+        first_index = next_idx - len(events)
+
+        if last_event_index is None:
+            # Client has no events, send all with their real indices
+            return [(first_index + i, e) for i, e in enumerate(events)]
+
+        # Client wants events after last_event_index
+        start_index = last_event_index + 1
+
+        if start_index >= next_idx:
+            # Client is caught up
             return []
-        return events[offset:]
+
+        if start_index <= first_index:
+            # Client is behind the buffer — return everything we have
+            return [(first_index + i, e) for i, e in enumerate(events)]
+
+        # Convert monotonic index to list position
+        list_offset = start_index - first_index
+        return [(start_index + i, e) for i, e in enumerate(events[list_offset:])]
 
     def get_event_count(self, run_id: str) -> int:
         """Get the current number of events for a run"""
         return len(self.events.get(run_id, []))
+
+    def get_last_index(self, run_id: str) -> int:
+        """Get the monotonic index of the last event added for a run.
+
+        Returns -1 if no events have been added for this run.
+        Unlike get_event_count(), this survives buffer trims.
+        """
+        next_idx = self._next_index.get(run_id)
+        if next_idx is None or next_idx == 0:
+            return -1
+        return next_idx - 1
 
     def set_run_completed(self, run_id: str, status: RunStatus) -> None:
         """Mark a run as completed/cancelled/error for future cleanup"""

@@ -2051,6 +2051,7 @@ async def _arun_background_stream(
 
         except Exception:
             log_error(f"Background stream run {run_id} failed", exc_info=True)
+            # Persist ERROR status
             try:
                 run_response.status = RunStatus.error
                 agent_session.upsert_run(run=run_response)
@@ -2059,6 +2060,12 @@ async def _arun_background_stream(
                 log_error(f"Failed to persist error state for background stream run {run_id}", exc_info=True)
 
         finally:
+            # Signal primary queue FIRST — unblocks the original client
+            try:
+                await sse_queue.put(None)
+            except Exception:
+                log_warning(f"Failed to signal primary queue for run {run_id} completion")
+
             try:
                 event_buffer.set_run_completed(run_id, run_response.status or RunStatus.completed)
             except Exception:
@@ -2066,13 +2073,8 @@ async def _arun_background_stream(
 
             try:
                 await asyncio.shield(sse_subscriber_manager.complete(run_id))
-            except BaseException:
+            except (Exception, asyncio.CancelledError):
                 log_warning(f"Failed to signal SSE subscribers for run {run_id} completion")
-
-            try:
-                await sse_queue.put(None)
-            except Exception:
-                log_warning(f"Failed to signal primary queue for run {run_id} completion")
 
     task = asyncio.create_task(_background_producer())
     _background_tasks.add(task)
@@ -2873,6 +2875,18 @@ def arun_dispatch(  # type: ignore
         )
 
 
+def _sync_requirements_with_tools(run_response: RunOutput, updated_tools: List[Any]) -> None:
+    """Sync requirements to reference the new tool objects so is_resolved()
+    checks operate on the same instances that handle_tool_call_updates modifies.
+    """
+    if run_response.requirements:
+        updated_tools_map = {t.tool_call_id: t for t in updated_tools if t.tool_call_id}
+
+        for req in run_response.requirements:
+            if req.tool_execution and req.tool_execution.tool_call_id in updated_tools_map:
+                req.tool_execution = updated_tools_map[req.tool_execution.tool_call_id]
+
+
 def continue_run_dispatch(
     agent: Agent,
     run_response: Optional[RunOutput] = None,
@@ -3001,6 +3015,7 @@ def continue_run_dispatch(
                 stacklevel=2,
             )
             run_response.tools = updated_tools
+            _sync_requirements_with_tools(run_response, updated_tools)
 
         # If we have requirements, get the updated tools and set them in the run_response
         elif requirements is not None:
@@ -3894,6 +3909,7 @@ async def _acontinue_run_background_stream(
 
         except Exception:
             log_error(f"Background continue-run stream {_run_id} failed", exc_info=True)
+            # Persist ERROR status
             try:
                 if run_response:
                     run_response.status = RunStatus.error
@@ -3903,6 +3919,12 @@ async def _acontinue_run_background_stream(
                 log_error(f"Failed to persist error state for background continue-run stream {_run_id}", exc_info=True)
 
         finally:
+            # Signal primary queue FIRST — unblocks the original client
+            try:
+                await sse_queue.put(None)
+            except Exception:
+                log_warning(f"Failed to signal primary queue for continue-run {_run_id} completion")
+
             try:
                 final_status = (run_response.status if run_response else None) or RunStatus.completed
                 event_buffer.set_run_completed(_run_id, final_status)
@@ -3911,13 +3933,8 @@ async def _acontinue_run_background_stream(
 
             try:
                 await asyncio.shield(sse_subscriber_manager.complete(_run_id))
-            except BaseException:
+            except (Exception, asyncio.CancelledError):
                 log_warning(f"Failed to signal SSE subscribers for continue-run {_run_id} completion")
-
-            try:
-                await sse_queue.put(None)
-            except Exception:
-                log_warning(f"Failed to signal primary queue for continue-run {_run_id} completion")
 
     task = asyncio.create_task(_background_producer())
     _background_tasks.add(task)
@@ -4030,6 +4047,7 @@ async def _acontinue_run(
                     # If we have updated_tools, set them in the run_response
                     if updated_tools is not None:
                         run_response.tools = updated_tools
+                        _sync_requirements_with_tools(run_response, updated_tools)
 
                     # If we have requirements, get the updated tools and set them in the run_response
                     elif requirements is not None:
@@ -4410,6 +4428,7 @@ async def _acontinue_run_stream(
                     # If we have updated_tools, set them in the run_response
                     if updated_tools is not None:
                         run_response.tools = updated_tools
+                        _sync_requirements_with_tools(run_response, updated_tools)
 
                     # If we have requirements, get the updated tools and set them in the run_response
                     elif requirements is not None:
