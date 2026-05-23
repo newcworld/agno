@@ -1989,7 +1989,7 @@ async def _arun_tasks(
         ahandle_reasoning,
     )
     from agno.team._telemetry import alog_team_telemetry
-    from agno.team._tools import _check_and_refresh_mcp_tools, _determine_tools_for_model
+    from agno.team._tools import _aget_learning_tools, _check_and_refresh_mcp_tools, _determine_tools_for_model
     from agno.team.task import TaskStatus, load_task_list
 
     log_debug(f"Team Task Run Start: {run_response.run_id}", center=True)
@@ -2033,6 +2033,7 @@ async def _arun_tasks(
         # 2. Determine tools for model (includes task management tools)
         team_run_context: Dict[str, Any] = {}
         await _check_and_refresh_mcp_tools(team)
+        learning_tools = await _aget_learning_tools(team, user_id, team_session)
         _tools = _determine_tools_for_model(
             team,
             model=team.model,
@@ -2053,6 +2054,7 @@ async def _arun_tasks(
             add_session_state_to_context=add_session_state_to_context,
             stream=False,
             stream_events=False,
+            learning_tools=learning_tools,
         )
 
         # 3. Prepare initial run messages
@@ -2321,7 +2323,7 @@ async def _arun_tasks_stream(
         ahandle_reasoning_stream,
     )
     from agno.team._telemetry import alog_team_telemetry
-    from agno.team._tools import _check_and_refresh_mcp_tools, _determine_tools_for_model
+    from agno.team._tools import _aget_learning_tools, _check_and_refresh_mcp_tools, _determine_tools_for_model
     from agno.team.task import TaskStatus, load_task_list
     from agno.utils.events import (
         create_team_task_iteration_completed_event,
@@ -2371,6 +2373,7 @@ async def _arun_tasks_stream(
         # 2. Determine tools for model (includes task management tools)
         team_run_context: Dict[str, Any] = {}
         await _check_and_refresh_mcp_tools(team)
+        learning_tools = await _aget_learning_tools(team, user_id, team_session)
         _tools = _determine_tools_for_model(
             team,
             model=team.model,
@@ -2391,6 +2394,7 @@ async def _arun_tasks_stream(
             add_session_state_to_context=add_session_state_to_context,
             stream=True,
             stream_events=stream_events,
+            learning_tools=learning_tools,
         )
 
         # 3. Prepare initial run messages
@@ -2843,7 +2847,7 @@ async def _arun(
         aparse_response_with_parser_model,
     )
     from agno.team._telemetry import alog_team_telemetry
-    from agno.team._tools import _check_and_refresh_mcp_tools, _determine_tools_for_model
+    from agno.team._tools import _aget_learning_tools, _check_and_refresh_mcp_tools, _determine_tools_for_model
 
     # Dispatch to task mode if applicable
     from agno.team.mode import TeamMode
@@ -2921,6 +2925,7 @@ async def _arun(
                 await _check_and_refresh_mcp_tools(
                     team,
                 )
+                learning_tools = await _aget_learning_tools(team, user_id, team_session)
                 _tools = _determine_tools_for_model(
                     team,
                     model=team.model,
@@ -2941,6 +2946,7 @@ async def _arun(
                     add_session_state_to_context=add_session_state_to_context,
                     stream=False,
                     stream_events=False,
+                    learning_tools=learning_tools,
                 )
 
                 # 3. Prepare run messages
@@ -3462,7 +3468,7 @@ async def _arun_stream(
         aparse_response_with_parser_model_stream,
     )
     from agno.team._telemetry import alog_team_telemetry
-    from agno.team._tools import _check_and_refresh_mcp_tools, _determine_tools_for_model
+    from agno.team._tools import _aget_learning_tools, _check_and_refresh_mcp_tools, _determine_tools_for_model
 
     # Fallback for tasks mode (streaming not yet supported)
     # Dispatch to task mode streaming if applicable
@@ -3545,6 +3551,7 @@ async def _arun_stream(
                 await _check_and_refresh_mcp_tools(
                     team,
                 )
+                learning_tools = await _aget_learning_tools(team, user_id, team_session)
                 _tools = _determine_tools_for_model(
                     team,
                     model=team.model,
@@ -3565,6 +3572,7 @@ async def _arun_stream(
                     add_session_state_to_context=add_session_state_to_context,
                     stream=True,
                     stream_events=stream_events,
+                    learning_tools=learning_tools,
                 )
 
                 # 3. Prepare run messages
@@ -6505,7 +6513,7 @@ async def _acontinue_run(
     from agno.team._hooks import _aexecute_post_hooks
     from agno.team._init import _disconnect_connectable_tools, _disconnect_mcp_tools
     from agno.team._telemetry import alog_team_telemetry
-    from agno.team._tools import _check_and_refresh_mcp_tools, _determine_tools_for_model
+    from agno.team._tools import _aget_learning_tools, _check_and_refresh_mcp_tools, _determine_tools_for_model
 
     log_debug(f"Team Continue Run: {run_response.run_id if run_response else run_id}", center=True)
 
@@ -6643,6 +6651,7 @@ async def _acontinue_run(
                     await _check_and_refresh_mcp_tools(team)
 
                     team_run_context: Dict[str, Any] = {}
+                    learning_tools = await _aget_learning_tools(team, user_id, team_session)
                     _tools = _determine_tools_for_model(
                         team,
                         model=team.model,
@@ -6652,6 +6661,7 @@ async def _acontinue_run(
                         session=team_session,
                         user_id=user_id,
                         async_mode=True,
+                        learning_tools=learning_tools,
                     )
 
                     input_messages = run_response.messages or []
@@ -6689,6 +6699,7 @@ async def _acontinue_run(
                     await _check_and_refresh_mcp_tools(team)
 
                     team_run_context: Dict[str, Any] = {}  # type: ignore[no-redef]
+                    learning_tools = await _aget_learning_tools(team, user_id, team_session)
                     _tools = _determine_tools_for_model(
                         team,
                         model=team.model,
@@ -6698,6 +6709,7 @@ async def _acontinue_run(
                         session=team_session,
                         user_id=user_id,
                         async_mode=True,
+                        learning_tools=learning_tools,
                     )
 
                     input_messages = run_response.messages or []
@@ -6844,7 +6856,7 @@ async def _acontinue_run_stream(
         aparse_response_with_parser_model_stream,
     )
     from agno.team._telemetry import alog_team_telemetry
-    from agno.team._tools import _check_and_refresh_mcp_tools, _determine_tools_for_model
+    from agno.team._tools import _aget_learning_tools, _check_and_refresh_mcp_tools, _determine_tools_for_model
     from agno.utils.events import create_team_run_continued_event
 
     log_debug(f"Team Continue Run Stream: {run_response.run_id if run_response else run_id}", center=True)
@@ -6983,6 +6995,7 @@ async def _acontinue_run_stream(
                     await _check_and_refresh_mcp_tools(team)
 
                     team_run_context: Dict[str, Any] = {}
+                    learning_tools = await _aget_learning_tools(team, user_id, team_session)
                     _tools = _determine_tools_for_model(
                         team,
                         model=team.model,
@@ -6994,6 +7007,7 @@ async def _acontinue_run_stream(
                         async_mode=True,
                         stream=True,
                         stream_events=stream_events,
+                        learning_tools=learning_tools,
                     )
 
                     input_messages = run_response.messages or []
@@ -7107,6 +7121,7 @@ async def _acontinue_run_stream(
                     await _check_and_refresh_mcp_tools(team)
 
                     team_run_context: Dict[str, Any] = {}  # type: ignore[no-redef]
+                    learning_tools = await _aget_learning_tools(team, user_id, team_session)
                     _tools = _determine_tools_for_model(
                         team,
                         model=team.model,
@@ -7118,6 +7133,7 @@ async def _acontinue_run_stream(
                         async_mode=True,
                         stream=True,
                         stream_events=stream_events,
+                        learning_tools=learning_tools,
                     )
 
                     input_messages = run_response.messages or []
