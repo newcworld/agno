@@ -800,6 +800,25 @@ class OpenAIChat(Model):
 
         return response.choices[0].finish_reason is not None
 
+    def _raise_if_empty_truncated_response(self, response: ChatCompletion, model_response: ModelResponse) -> None:
+        """Raise when OpenAI reports truncation but returned no usable assistant output."""
+        finish_reason = response.choices[0].finish_reason
+        if finish_reason != "length":
+            return
+
+        has_content = bool(model_response.content)
+        has_tool_calls = bool(model_response.tool_calls)
+        if has_content or has_tool_calls:
+            log_warning("OpenAI response was truncated with finish_reason='length'.")
+            return
+
+        raise ContextWindowExceededError(
+            message="OpenAI response was truncated with finish_reason='length' and no usable content "
+            "(context_length_exceeded).",
+            model_name=self.name,
+            model_id=self.id,
+        )
+
     def _parse_provider_response(
         self,
         response: ChatCompletion,
@@ -873,6 +892,8 @@ class OpenAIChat(Model):
 
         if response.usage is not None:
             model_response.response_usage = self._get_metrics(response.usage)
+
+        self._raise_if_empty_truncated_response(response=response, model_response=model_response)
 
         if model_response.provider_data is None:
             model_response.provider_data = {}

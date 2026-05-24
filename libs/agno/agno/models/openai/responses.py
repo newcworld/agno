@@ -1144,6 +1144,49 @@ class OpenAIResponses(Model):
         if len(function_call_results) > 0:
             messages.extend(function_call_results)
 
+    def _response_has_usable_output(self, response: Response, model_response: Optional[ModelResponse] = None) -> bool:
+        """Return True when an incomplete response still contains content or tool calls."""
+        if getattr(response, "output_text", None):
+            return True
+
+        if model_response is not None and (model_response.content or model_response.tool_calls):
+            return True
+
+        for output in getattr(response, "output", []) or []:
+            if getattr(output, "type", None) == "function_call":
+                return True
+            if getattr(output, "type", None) == "message":
+                for content in getattr(output, "content", []) or []:
+                    if getattr(content, "type", None) == "output_text" and getattr(content, "text", None):
+                        return True
+
+        return False
+
+    def _raise_if_incomplete_without_output(
+        self, response: Response, model_response: Optional[ModelResponse] = None
+    ) -> None:
+        if getattr(response, "status", None) != "incomplete":
+            return
+
+        if self._response_has_usable_output(response=response, model_response=model_response):
+            log_warning(
+                f"OpenAI response completed with status 'incomplete': {getattr(response, 'incomplete_details', None)}"
+            )
+            return
+
+        incomplete_details = getattr(response, "incomplete_details", None)
+        reason = getattr(incomplete_details, "reason", None)
+        if reason is None and isinstance(incomplete_details, dict):
+            reason = incomplete_details.get("reason")
+        reason = reason or "unknown"
+
+        raise ContextWindowExceededError(
+            message=f"OpenAI response was incomplete with no usable content (reason={reason}, "
+            "context_length_exceeded).",
+            model_name=self.name,
+            model_id=self.id,
+        )
+
     def _parse_provider_response(self, response: Response, **kwargs) -> ModelResponse:
         """
         Parse the OpenAI response into a ModelResponse.
@@ -1238,6 +1281,8 @@ class OpenAIResponses(Model):
         if response.usage is not None:
             model_response.response_usage = self._get_metrics(response.usage)
 
+        self._raise_if_incomplete_without_output(response=response, model_response=model_response)
+
         return model_response
 
     def _parse_provider_response_delta(
@@ -1288,6 +1333,7 @@ class OpenAIResponses(Model):
         # 3. Add content
         elif stream_event.type == "response.output_text.delta":
             model_response.content = stream_event.delta
+            assistant_message.content = (assistant_message.content or "") + stream_event.delta
 
             # Treat the output_text deltas as reasoning content if the reasoning summary is not requested.
             if self.reasoning is not None and self.reasoning_summary is None:
@@ -1344,6 +1390,14 @@ class OpenAIResponses(Model):
             # Add metrics
             if stream_event.response.usage is not None:
                 model_response.response_usage = self._get_metrics(stream_event.response.usage)
+
+            self._raise_if_incomplete_without_output(
+                response=stream_event.response,
+                model_response=ModelResponse(
+                    content=assistant_message.content or "",
+                    tool_calls=assistant_message.tool_calls or [],
+                ),
+            )
 
         return model_response, tool_use
 

@@ -346,7 +346,12 @@ class LiteLLM(Model):
         """Parse the provider response."""
         model_response = ModelResponse()
 
-        response_message = response.choices[0].message
+        response_choice = response.choices[0]
+        response_message = response_choice.message
+
+        finish_reason = getattr(response_choice, "finish_reason", None)
+        if finish_reason is not None:
+            model_response.provider_data = {"finish_reason": finish_reason}
 
         if response_message.content is not None:
             model_response.content = response_message.content
@@ -375,7 +380,12 @@ class LiteLLM(Model):
         model_response = ModelResponse()
 
         if hasattr(response_delta, "choices") and len(response_delta.choices) > 0:
-            choice_delta = response_delta.choices[0].delta
+            choice = response_delta.choices[0]
+            choice_delta = choice.delta
+
+            finish_reason = getattr(choice, "finish_reason", None)
+            if finish_reason is not None:
+                model_response.provider_data = {"finish_reason": finish_reason}
 
             if choice_delta:
                 if hasattr(choice_delta, "content") and choice_delta.content is not None:
